@@ -7,6 +7,12 @@ L=/tmp/class_test.log
 A=/tmp/class_report.awk
 
 [ -f "$S" ] || { echo "Не найден файл со списком: $S"; exit 1; }
+# blockcheck2.sh запускается после cd в /opt/zapret2, поэтому путь должен быть абсолютным
+S=$(readlink -f "$S") || { echo "Не удалось определить полный путь к списку: $S"; exit 1; }
+
+[ -f /opt/zapret2/blockcheck2.sh ] || { echo "Не найден /opt/zapret2/blockcheck2.sh: Zapret2 не установлен?"; exit 1; }
+command -v curl >/dev/null 2>&1 || { echo "Не найден curl: blockcheck2 без него не работает."; exit 1; }
+nslookup "$DOM" >/dev/null 2>&1 || echo "ВНИМАНИЕ: $DOM не резолвится. Проверьте DNS и отключите VPN, иначе результат теста будет неверным."
 
 cat > $A <<'AWK'
 function norm(x) { gsub(/\r/, "", x); gsub(/[ \t]+/, " ", x); sub(/^ /, "", x); sub(/ $/, "", x); return x }
@@ -22,6 +28,13 @@ NR==FNR { x = norm($0); if (x != "" && substr(x, 1, 1) != "#") { n++; lst[n] = x
   next
 }
 /^\* / || /^clearing/ || /^!!!!! curl/ { cur = ""; next }
+# При одном повторе blockcheck2 не печатает строки "[attempt N]", только итог по стратегии.
+rep == 1 && /^curl: / {
+  if (cur != "" && match($0, /with [0-9]+ bytes received/)) { b = substr($0, RSTART + 5, RLENGTH - 20) + 0; if (b > 0) part[key] = 1 }
+  next
+}
+rep == 1 && /^!!!!! AVAILABLE !!!!!/ { if (cur != "") { tot[key] = 1; ok[key] = 1 } next }
+rep == 1 && /^UNAVAILABLE/ { if (cur != "") tot[key] = 1; next }
 /^\[attempt [0-9]+\]/ {
   if (cur != "") {
     tot[key]++
@@ -60,10 +73,11 @@ cleanup() {
   CLEANED=1
   echo
   if [ "$WAS" = 1 ]; then
-    /etc/init.d/zapret2 start >/dev/null 2>&1
-    echo "Zapret2 снова запущен."
-  else
-    echo "Zapret2 выключен на время тестирования."
+    if /etc/init.d/zapret2 start >/dev/null 2>&1; then
+      echo "Zapret2 снова запущен."
+    else
+      echo "ВНИМАНИЕ: не удалось запустить Zapret2. Выполните вручную: /etc/init.d/zapret2 start"
+    fi
   fi
 }
 trap cleanup EXIT
@@ -90,7 +104,7 @@ if [ $NB12 = 1 ] && [ $NB13 = 1 ]; then
 elif ! grep -q "^\* SUMMARY" $L; then
   echo "ТЕСТ НЕ ЗАВЕРШИЛСЯ (в логе нет блока SUMMARY). Пришлите краткий лог."
 else
-  awk -f $A $S $L
+  awk -v rep="$REP" -f $A $S $L
   [ $NB12 = 1 ] && echo "TLS 1.2: открывается без обхода, стратегии для него не проверялись."
   [ $NB13 = 1 ] && echo "TLS 1.3: открывается без обхода, стратегии для него не проверялись."
 fi

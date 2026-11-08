@@ -85,10 +85,15 @@ AWK
 WAS=0
 pgrep nfqws2 >/dev/null 2>&1 && WAS=1
 CLEANED=0
+BPID=
 
 cleanup() {
   [ "$CLEANED" = 1 ] && return
   CLEANED=1
+  if [ -n "$BPID" ] && kill -0 "$BPID" 2>/dev/null; then
+    kill "$BPID" 2>/dev/null
+    wait "$BPID" 2>/dev/null
+  fi
   echo
   if [ "$WAS" = 1 ]; then
     if /etc/init.d/zapret2 start >/dev/null 2>&1; then
@@ -103,8 +108,24 @@ trap 'cleanup; exit 130' INT TERM HUP
 
 [ "$WAS" = 1 ] && /etc/init.d/zapret2 stop >/dev/null 2>&1
 cd /opt/zapret2 || exit 1
-echo "В данный момент производится тестирование сети, пожалуйста подождите..."
-BATCH=1 TEST=custom LIST_HTTPS_TLS12=$S LIST_HTTPS_TLS13=$S DOMAINS=$DOM IPVS=4 ENABLE_HTTP=0 ENABLE_HTTPS_TLS12=1 ENABLE_HTTPS_TLS13=1 ENABLE_HTTP3=0 REPEATS=$REP CURL_HTTPS_GET=1 CURL_MAX_TIME=$TMO ./blockcheck2.sh > $L 2>&1
+echo "В данный момент производится тестирование сети, пожалуйста подождите (обычно несколько минут)..."
+BATCH=1 TEST=custom LIST_HTTPS_TLS12=$S LIST_HTTPS_TLS13=$S DOMAINS=$DOM IPVS=4 ENABLE_HTTP=0 ENABLE_HTTPS_TLS12=1 ENABLE_HTTPS_TLS13=1 ENABLE_HTTP3=0 REPEATS=$REP CURL_HTTPS_GET=1 CURL_MAX_TIME=$TMO ./blockcheck2.sh > $L 2>&1 &
+BPID=$!
+TOTAL=$(( $(grep -cvE '^[[:space:]]*(#|$)' "$S") * 2 ))
+T0=$(date +%s)
+while kill -0 "$BPID" 2>/dev/null; do
+  DONE=$(grep -c '^- curl_test_https_tls1[23] .* : nfqws2 ' $L 2>/dev/null)
+  [ "$DONE" -gt "$TOTAL" ] && DONE=$TOTAL
+  EL=$(( $(date +%s) - T0 ))
+  if [ "$DONE" -gt 0 ]; then
+    printf '\r  Проверка стратегий: %s из %s, прошло %s:%02d. Не закрывайте терминал.   ' "$DONE" "$TOTAL" $((EL / 60)) $((EL % 60))
+  else
+    printf '\r  Подготовка к тесту, прошло %s:%02d. Не закрывайте терминал.   ' $((EL / 60)) $((EL % 60))
+  fi
+  sleep 2
+done
+wait "$BPID" 2>/dev/null
+printf '\r%-78s\r' ""
 
 sed -e '/^More details here:/d' -e '/^curl failed to verify/d' -e '/^establish a secure connection/d' -e '/^how to fix it/d' -e '/^$/d' $L > $L.short
 

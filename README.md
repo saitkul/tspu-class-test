@@ -36,7 +36,15 @@
 
 ## 🚀 Как провести тест
 
-Подключитесь к роутеру через SSH-терминал, скопируйте и выполните содержание данного [скрипта](https://github.com/saitkul/tspu-class-test/blob/main/script.sh).
+Подключитесь к роутеру через SSH-терминал и выполните одну строку:
+
+```bash
+curl -sL https://raw.githubusercontent.com/saitkul/tspu-class-test/main/script.sh -o /tmp/tspu.sh && sh /tmp/tspu.sh
+```
+
+Тест идёт несколько минут. Всё это время в терминале обновляется строка с прогрессом («Проверка стратегий: N из M»), так что зависшим он не выглядит.
+
+Если `curl` недоступен, скопируйте и выполните содержание [скрипта](https://github.com/saitkul/tspu-class-test/blob/main/script.sh) вручную.
 
 ## ⚙️ Повторный запуск и параметры
 

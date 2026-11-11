@@ -34,13 +34,13 @@
 
 ### OpenWrt 23.05 / 24.x (opkg)
 ```bash
-opkg install https://github.com/saitkul/tspu-class-test/releases/latest/download/luci-app-tspu-test_1.1.2-1_all.ipk
+opkg install https://github.com/saitkul/tspu-class-test/releases/latest/download/luci-app-tspu-test_1.1.4-1_all.ipk
 ```
 Или через LuCI: **Система → Программное обеспечение → Загрузить пакет**.
 
 ### OpenWrt 25.x (apk) — экспериментально
 ```bash
-apk add --allow-untrusted https://github.com/saitkul/tspu-class-test/releases/latest/download/luci-app-tspu-test-1.1.2-r1.apk
+apk add --allow-untrusted https://github.com/saitkul/tspu-class-test/releases/latest/download/luci-app-tspu-test-1.1.4-r1.apk
 ```
 
 ### Удаление
@@ -60,7 +60,7 @@ opkg remove luci-app-tspu-test    # или: apk del luci-app-tspu-test
 
 ```bash
 tspu-test start [ДОМЕН(Ы)] [ПОВТОРОВ] [ОЖИДАНИЕ_С]
-tspu-test start rr1---sn-ИМЯ.googlevideo.com 3 5   # тест на узле видеопотока
+tspu-test start www.youtube.com 3 5   # тест на узле видеопотока
 tspu-test stop | status | log | clearlog
 ```
 

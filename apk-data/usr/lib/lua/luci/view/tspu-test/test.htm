@@ -71,7 +71,7 @@
 				<button id="tspu_btn_clear" class="btn cbi-button cbi-button-neutral" onclick="tspuClear()">Очистить лог</button>
 				<button id="tspu_btn_copy" class="btn cbi-button cbi-button-neutral" onclick="tspuCopy()">Скопировать отчёт</button>
 				<div id="tspu_status" style="margin-top:.3em; font-size:.92em"></div>
-				<div style="color:#888; margin-top:.3em; font-size:.92em">Идёт ли тест: видно по кнопкам (во время теста «Запустить тест» неактивна) и по растущему логу. Остановка — только в терминале роутера: /usr/bin/tspu-test stop</div>
+				<div style="color:#888; margin-top:.3em; font-size:.92em">В терминале можно:<br/>Остановить тест: /usr/bin/tspu-test stop<br/>Следить за прогрессом: /usr/bin/tspu-test status</div>
 			</div>
 		</div>
 		<div class="cbi-value" id="tspu_verdict" style="display:none">
@@ -177,10 +177,14 @@
 		if (!text || text.indexOf('state=') < 0) return;
 		var st = parseStatus(text);
 		/* Надпись «Статус» убрана по решению владельца. Из status берём
-		   только версию (заголовок) и ошибку запуска. Кнопками управляет
-		   ЛОГ (см. applyLog) — он надёжнее статусного опроса. */
+		   только версию (заголовок), ошибку запуска и остановку (страховка
+		   разблокировки кнопок, если лог-маркер не дошёл). Кнопками в целом
+		   управляет ЛОГ (см. applyLog). */
 		if (st.state == 'error') {
 			elStatus.textContent = 'Ошибка: ' + (st.msg || 'см. вывод теста');
+			setRunning(false);
+		} else if (st.state == 'stopped') {
+			setRunning(false);
 		}
 
 		/* Версия пакета (status отдаёт version=, если контроллер её знает) —
@@ -209,9 +213,10 @@
 		lastLog = clean;
 		/* Кнопки управляются по ЛОГУ, а не по статусному опросу: лог доходит
 		   всегда, а status-эндпоинт на части прошивок ненадёжен.
-		   «=== конец отчёта ===» в логе → тест завершён; баннер нового прогона
-		   без конца отчёта → тест идёт. */
-		if (clean.indexOf('=== конец отчёта ===') >= 0) {
+		   «=== конец отчёта ===» или «=== ТЕСТ ОСТАНОВЛЕН ===» в логе → тест
+		   завершён; баннер нового прогона без этих маркеров → тест идёт. */
+		if (clean.indexOf('=== конец отчёта ===') >= 0 ||
+			clean.indexOf('=== ТЕСТ ОСТАНОВЛЕН') >= 0) {
 			setRunning(false);
 		} else if (clean.indexOf('В данный момент производится тестирование') >= 0) {
 			setRunning(true);
@@ -281,9 +286,18 @@
 		var url = U_START + '?domain=' + encodeURIComponent(elDomain.value || 'www.youtube.com') +
 			'&repeats=' + encodeURIComponent(elRep.value) +
 			'&wait=' + encodeURIComponent(elWait.value);
-		/* Кнопки гаснут сразу по клику; дальше их держит лог (applyLog) */
+		/* Кнопки гаснут сразу по клику; дальше их держит лог (applyLog).
+		   Если запуск не состоялся (state=error в ответе start) —
+		   разблокируем сразу и покажем причину. */
 		setRunning(true);
-		xhr(url, function () { update(); });
+		xhr(url, function (t) {
+			var em = (t || '').match(/^state=error msg=(.*)$/m);
+			if (em) {
+				setRunning(false);
+				elStatus.textContent = 'Ошибка запуска: ' + em[1];
+			}
+			update();
+		});
 	};
 
 	window.tspuClear = function () {

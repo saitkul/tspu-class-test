@@ -74,10 +74,19 @@ jobs:
 
       - name: Verify package installs into clean root
         run: |
-          # Проверка, которую делает роутер: установить пакет в пустой root
+          # Установка в пустой root, как это делает роутер. В чистом root нет
+          # провайдеров curl/luci-base, поэтому verify-вариант собирается без
+          # depends - содержимое (data) идентично публикуемому пакету.
+          ./sbin/apk.static mkpkg \
+            --info "name:luci-app-tspu-test" \
+            --info "version:1.1.4-r1" \
+            --info "arch:noarch" \
+            --info "license:MIT" \
+            --output /tmp/verify-nodeps.apk \
+            --files apk-data
           mkdir -p /tmp/troot
           sudo ./sbin/apk.static --allow-untrusted --initdb --root /tmp/troot \
-            add --no-deps ./luci-app-tspu-test-1.1.4-r1.apk
+            add /tmp/verify-nodeps.apk
           echo "=== installed tree ==="
           find /tmp/troot -type f | sort
           echo "=== version file ==="

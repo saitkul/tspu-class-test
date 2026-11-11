@@ -94,7 +94,7 @@ jobs:
           echo "=== markers ==="
           grep -c "elClear.disabled = r" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
           grep -c "tspu_title_ver" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
-          grep -c "(версия: v1.1.5" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
+          grep -c "(версия: v' + st.version" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
           grep -c "indexOf('=== ИТОГ')" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
           grep -c "Date.now()" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
           grep -c "pkg_version" /tmp/troot/usr/lib/lua/luci/controller/tspu-test.lua

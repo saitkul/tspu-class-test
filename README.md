@@ -34,13 +34,13 @@
 
 ### OpenWrt 23.05 / 24.x (opkg)
 ```bash
-opkg install https://github.com/saitkul/tspu-class-test/releases/latest/download/luci-app-tspu-test_1.1.4-1_all.ipk
+opkg install https://github.com/saitkul/tspu-class-test/raw/main/luci-app-tspu-test_1.1.4-1_all.ipk
 ```
 Или через LuCI: **Система → Программное обеспечение → Загрузить пакет**.
 
 ### OpenWrt 25.x (apk) — экспериментально
 ```bash
-apk add --allow-untrusted https://github.com/saitkul/tspu-class-test/releases/latest/download/luci-app-tspu-test-1.1.4-r1.apk
+apk add --allow-untrusted https://github.com/saitkul/tspu-class-test/raw/main/luci-app-tspu-test-1.1.4-r1.apk
 ```
 
 ### Удаление

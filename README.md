@@ -87,7 +87,7 @@ tspu-test stop | status | log | clearlog
 
 > 💡 Видео тестируется по **отдельному узлу** `rr1---sn-….googlevideo.com` (DevTools → Network → фильтр `googlevideo` → `videoplayback`); корневой `googlevideo.com` обычно закрыт наглухо.
 
-Полная версия клиенты — в [релизе v3.1.0-clients](https://github.com/saitkul/tspu-class-test/releases/tag/v3.1.0-clients).
+Скачивание — в [релизе v3.1.0-clients](https://github.com/saitkul/tspu-class-test/releases/tag/v3.1.0-clients).
 
 ## 🎥 Проверка узла видеопотока googlevideo
 

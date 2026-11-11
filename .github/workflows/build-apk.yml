@@ -76,7 +76,7 @@ jobs:
         run: |
           # Проверка, которую делает роутер: установить пакет в пустой root
           mkdir -p /tmp/troot
-          ./sbin/apk.static --allow-untrusted --initdb --root /tmp/troot \
+          sudo ./sbin/apk.static --allow-untrusted --initdb --root /tmp/troot \
             add ./luci-app-tspu-test-1.1.4-r1.apk
           echo "=== installed tree ==="
           find /tmp/troot -type f | sort

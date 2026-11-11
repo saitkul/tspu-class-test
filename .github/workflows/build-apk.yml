@@ -24,6 +24,8 @@ jobs:
           find apk-data -type d -exec chmod 755 {} +
           find apk-data -type f -exec chmod 644 {} +
           chmod 755 apk-data/usr/bin/tspu-test
+          # Версия в SCRIPT_VER подставляется из имени релиза
+          sed -i 's/@APP_VERSION@/1.1.2/' apk-data/usr/bin/tspu-test
 
       - name: Create package scripts
         run: |

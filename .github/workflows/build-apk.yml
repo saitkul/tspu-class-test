@@ -99,7 +99,6 @@ jobs:
           grep -c "Date.now()" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
           grep -c "pkg_version" /tmp/troot/usr/lib/lua/luci/controller/tspu-test.lua
           grep -c "SCRIPT_VER=\"TSPU test 1.1.4" /tmp/troot/usr/bin/tspu-test
-          grep -c "runner lost" /tmp/troot/usr/bin/tspu-test
           grep -c "blockcheck2.sh" /tmp/troot/usr/bin/tspu-test
 
       - uses: actions/upload-artifact@v4

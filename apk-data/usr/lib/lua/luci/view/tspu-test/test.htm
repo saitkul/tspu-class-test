@@ -92,9 +92,7 @@
 				<label style="display:inline-flex; align-items:center; gap:.4em">
 					<input id="tspu_autoscroll" type="checkbox" checked="checked" /> Авторпрокрутка
 				</label>
-				<label style="display:inline-flex; align-items:center; gap:.4em; margin-left:1.5em" title="Если вердикт «не определён (нестабильно/медленно)» — автоматически повторить тест с ожиданием 8 с и повторами 3">
-					<input id="tspu_autoretest" type="checkbox" checked="checked" /> Авто-повтор при «не определён» (8 с / повторы 3)
-				</label>
+				<span style="display:inline-block; margin-left:1.5em; color:#888; font-size:.92em">Если вердикт «не определён» — повторите тест с ожиданием 8 с и повторами 5 (рекомендация печатается в вердикте)</span>
 			</div>
 		</div>
 		<div style="margin-top:.4em">
@@ -150,9 +148,6 @@
 	var elAttempts = document.getElementById('tspu_attempts');
 	var elProgress = document.getElementById('tspu_progress');
 	var elPct = document.getElementById('tspu_pct');
-	var elRetest = document.getElementById('tspu_autoretest');
-	var retestUsed = false;
-	var undefinedSeen = false;
 	var lastLog = null;
 
 	elDlShort.href = U_DL + '?which=short';
@@ -242,15 +237,6 @@
 		elProgress.style.display = prog ? '' : 'none';
 		elPct.style.display = prog ? '' : 'none';
 		if (!prog) elPct.textContent = '';
-
-		/* Авто-повтор: тест завершён, вердикт «не определён (нестабильно/медленно)»,
-		   галочка включена, повтор ещё не делался — один повторный прогон
-		   с ожиданием 8 с и повторами 5 */
-		if (st.state == 'done' && elRetest.checked && !retestUsed && undefinedSeen) {
-			retestUsed = true;
-			elStatus.textContent = 'Вердикт «не определён» — запускаю авто-повтор (ожидание 8 с, повторы 3)...';
-			setTimeout(function () { tspuAutoRetest(); }, 1200);
-		}
 	}
 
 	function xhr(url, cb) {
@@ -289,10 +275,6 @@
 			if (lines[i].indexOf('КЛАСС ТСПУ') === 0) vd.push(lines[i]);
 			if (lines[i].indexOf('Попытки TLS') === 0) att.push(lines[i]);
 		}
-		/* Любой вердикт «не определён» даёт право на авто-повтор:
-		   и «(нестабильно/медленно)», и «(не прошло ни одной строки)» —
-		   на узле googlevideo aj5goc-5j триггер молчал из-за второго варианта */
-		undefinedSeen = (scope.indexOf('не определён') >= 0);
 
 		if (vd.length) {
 			var cls = 'undef';
@@ -336,22 +318,12 @@
 	}
 
 	window.tspuStart = function () {
-		retestUsed = false;
-		undefinedSeen = false;
 		var url = U_START + '?domain=' + encodeURIComponent(elDomain.value || 'www.youtube.com') +
 			'&repeats=' + encodeURIComponent(elRep.value) +
 			'&wait=' + encodeURIComponent(elWait.value);
 		setRunning(true);
 		/* Статус не должен врать «Готово» до первого ответа status */
 		elStatus.textContent = 'Запуск теста…';
-		xhr(url, function () { update(); });
-	};
-
-	window.tspuAutoRetest = function () {
-		var url = U_START + '?domain=' + encodeURIComponent(elDomain.value || 'www.youtube.com') +
-			'&repeats=3&wait=8';
-		setRunning(true);
-		elStatus.textContent = 'Запуск авто-повтора…';
 		xhr(url, function () { update(); });
 	};
 

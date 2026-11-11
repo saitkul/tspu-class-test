@@ -17,7 +17,7 @@
 </style>
 
 <div class="cbi-map" id="tspu_test_map">
-	<h2><a id="content" name="content">TSPU test — класс ТСПУ провайдера</a></h2>
+	<h2><a id="content" name="content">TSPU test — класс ТСПУ провайдера<span id="tspu_title_ver"></span></a></h2>
 	<div class="cbi-map-descr">
 		<p>Определяет, какие механики десинхронизации пропускает ТСПУ вашего провайдера: 16 стратегий (нарезка / голый фейк / комбинации) на TLS 1.2 и TLS 1.3 в режиме SCANLEVEL=force. По результатам печатается вердикт «КЛАСС ТСПУ».</p>
 		<p>На время теста служба Zapret2 останавливается и запускается обратно по завершении. Финальную проверку стратегии всегда делайте в браузере в режиме Инкогнито.</p>
@@ -71,7 +71,7 @@
 				<button id="tspu_btn_stop" class="btn cbi-button cbi-button-negative" disabled="disabled" onclick="tspuStop()">Остановить</button>
 				<button id="tspu_btn_clear" class="btn cbi-button cbi-button-neutral" onclick="tspuClear()">Очистить лог</button>
 				<button id="tspu_btn_copy" class="btn cbi-button cbi-button-neutral" onclick="tspuCopy()">Скопировать отчёт</button>
-				<span style="margin-left:1em"><span style="color:#888">Статус: </span><span id="tspu_status" style="font-weight:bold">Готово</span><span id="tspu_version" style="color:#888"></span></span>
+				<span style="margin-left:1em"><span style="color:#888">Статус: </span><span id="tspu_status" style="font-weight:bold">Готово</span></span>
 			</div>
 		</div>
 		<div class="cbi-value" id="tspu_verdict" style="display:none">
@@ -136,7 +136,8 @@
 	var elClear = document.getElementById('tspu_btn_clear');
 	var elCopy = document.getElementById('tspu_btn_copy');
 	var elStatus = document.getElementById('tspu_status');
-	var elVersion = document.getElementById('tspu_version');
+	var elTitleVer = document.getElementById('tspu_title_ver');
+	var titleVerDone = false;
 	var elAuto = document.getElementById('tspu_autoscroll');
 	var elLog = document.getElementById('tspu_log');
 	var elDlBlock = document.getElementById('tspu_dl_block');
@@ -210,8 +211,12 @@
 		}
 		elStatus.textContent = txt;
 
-		/* Версия пакета (status отдаёт version=, если контроллер её знает) */
-		elVersion.textContent = st.version ? (' · v' + st.version) : '';
+		/* Версия пакета (status отдаёт version=, если контроллер её знает) —
+		   показывается один раз в заголовке страницы */
+		if (st.version && !titleVerDone) {
+			titleVerDone = true;
+			elTitleVer.textContent = ' (версия: v' + st.version + ')';
+		}
 
 		/* Прогрессбар в стиле LuCI */
 		var pr = st.progress || '';
@@ -238,7 +243,9 @@
 	function xhr(url, cb) {
 		try {
 			var x = new XMLHttpRequest();
-			x.open('GET', url, true);
+			/* cache-buster: без него браузер может отдать кэшированный ответ
+			   и статус зависнет на «Готово» при идущем тесте */
+			x.open('GET', url + (url.indexOf('?') >= 0 ? '&' : '?') + '_=' + Date.now(), true);
 			x.onreadystatechange = function () {
 				if (x.readyState === 4 && x.status === 200 && cb) cb(x.responseText);
 			};
@@ -319,6 +326,8 @@
 			'&repeats=' + encodeURIComponent(elRep.value) +
 			'&wait=' + encodeURIComponent(elWait.value);
 		setRunning(true);
+		/* Статус не должен врать «Готово» до первого ответа status */
+		elStatus.textContent = 'Запуск теста…';
 		xhr(url, function () { update(); });
 	};
 
@@ -326,6 +335,7 @@
 		var url = U_START + '?domain=' + encodeURIComponent(elDomain.value || 'www.youtube.com') +
 			'&repeats=3&wait=8';
 		setRunning(true);
+		elStatus.textContent = 'Запуск авто-повтора…';
 		xhr(url, function () { update(); });
 	};
 
@@ -340,25 +350,32 @@
 	};
 
 	window.tspuCopy = function () {
-		var t = elLog.value;
-		var s = t.indexOf('=== ОТЧЁТ ДЛЯ issue #1');
-		var e = t.indexOf('=== конец отчёта ===');
-		if (s < 0 || e < 0) {
-			elStatus.textContent = 'Отчёт ещё не сформирован';
-			return;
-		}
-		var block = t.substring(s, e + '=== конец отчёта ==='.length);
-		var tmp = document.createElement('textarea');
-		tmp.value = block;
-		tmp.style.position = 'fixed';
-		tmp.style.left = '-9999px';
-		document.body.appendChild(tmp);
-		tmp.select();
-		var done = false;
-		try { done = document.execCommand('copy'); } catch (err) { done = false; }
-		document.body.removeChild(tmp);
-		elStatus.textContent = done ? 'Отчёт скопирован в буфер обмена' : 'Не удалось скопировать - выделите текст вручную';
-		if (done) setTimeout(function () { update(); }, 1500);
+		/* Копируем из СВЕЖЕГО полного лога, а не из textarea: в textarea хвост
+		   со «=== ОТЧЁТ ДЛЯ issue #1» скрыт (чтобы вердикт не дублировался в
+		   цветных блоках) — раньше кнопка не находила маркер и буфер молча
+		   не обновлялся */
+		xhr(U_LOG, function (t) {
+			var clean = (t || '').replace(/\r/g, '');
+			var s = clean.indexOf('=== ИТОГ');
+			if (s < 0) {
+				elStatus.textContent = 'Отчёт ещё не сформирован — запустите тест';
+				return;
+			}
+			/* до «=== конец отчёта ===» включительно; при мульти-домене — от первого ИТОГ до конца отчёта */
+			var e = clean.indexOf('=== конец отчёта ===');
+			var end = (e >= 0) ? e + '=== конец отчёта ==='.length : clean.length;
+			var block = clean.substring(s, end);
+			var tmp = document.createElement('textarea');
+			tmp.value = block;
+			tmp.style.position = 'fixed';
+			tmp.style.left = '-9999px';
+			document.body.appendChild(tmp);
+			tmp.select();
+			var done = false;
+			try { done = document.execCommand('copy'); } catch (err) { done = false; }
+			document.body.removeChild(tmp);
+			elStatus.textContent = done ? 'Отчёт скопирован в буфер обмена' : 'Не удалось скопировать — выделите текст вручную';
+		});
 	};
 
 	setInterval(update, 3000);

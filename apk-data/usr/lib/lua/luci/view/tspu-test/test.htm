@@ -71,7 +71,7 @@
 				<button id="tspu_btn_stop" class="btn cbi-button cbi-button-negative" disabled="disabled" onclick="tspuStop()">Остановить</button>
 				<button id="tspu_btn_clear" class="btn cbi-button cbi-button-neutral" onclick="tspuClear()">Очистить лог</button>
 				<button id="tspu_btn_copy" class="btn cbi-button cbi-button-neutral" onclick="tspuCopy()">Скопировать отчёт</button>
-				<span style="margin-left:1em"><span style="color:#888">Статус: </span><span id="tspu_status" style="font-weight:bold">Готово</span></span>
+				<span style="margin-left:1em"><span style="color:#888">Статус: </span><span id="tspu_status" style="font-weight:bold">Готово</span><span id="tspu_version" style="color:#888"></span></span>
 			</div>
 		</div>
 		<div class="cbi-value" id="tspu_verdict" style="display:none">
@@ -98,6 +98,9 @@
 			</div>
 		</div>
 		<div style="margin-top:.4em">
+			<div class="cbi-progressbar" id="tspu_progress" title="0%" style="display:none">
+				<div style="width:0%"></div>
+			</div>
 			<textarea id="tspu_log" readonly="readonly" wrap="off" style="width:100%; height:420px; font-family:monospace; white-space:pre; padding:.5em"></textarea>
 		</div>
 		<div class="cbi-value" id="tspu_dl_block" style="margin-top:.4em">
@@ -130,7 +133,10 @@
 	var elWait = document.getElementById('tspu_wait');
 	var elStart = document.getElementById('tspu_btn_start');
 	var elStop = document.getElementById('tspu_btn_stop');
+	var elClear = document.getElementById('tspu_btn_clear');
+	var elCopy = document.getElementById('tspu_btn_copy');
 	var elStatus = document.getElementById('tspu_status');
+	var elVersion = document.getElementById('tspu_version');
 	var elAuto = document.getElementById('tspu_autoscroll');
 	var elLog = document.getElementById('tspu_log');
 	var elDlBlock = document.getElementById('tspu_dl_block');
@@ -140,6 +146,7 @@
 	var elVerdictText = document.getElementById('tspu_verdict_text');
 	var elAttemptsWrap = document.getElementById('tspu_attempts_wrap');
 	var elAttempts = document.getElementById('tspu_attempts');
+	var elProgress = document.getElementById('tspu_progress');
 	var elRetest = document.getElementById('tspu_autoretest');
 	var retestUsed = false;
 	var undefinedSeen = false;
@@ -172,6 +179,11 @@
 		elDomain.disabled = r;
 		elRep.disabled = r;
 		elWait.disabled = r;
+		/* Во время теста активен только «Остановить» (требование юзабилизи):
+		   Старт, Очистить лог и Скопировать отчёт пассивны */
+		elClear.disabled = r;
+		elCopy.disabled = r;
+		elProgress.style.display = r ? '' : 'none';
 	}
 
 	function applyStatus(text) {
@@ -179,11 +191,18 @@
 		var running = (st.state == 'running' || st.state == 'starting' || st.state == 'started');
 		setRunning(running);
 
+
 		var txt = 'Готово';
 		if (st.state == 'running' || st.state == 'starting' || st.state == 'started') {
 			txt = 'Идёт тест';
 			if (st.progress) txt += ': ' + st.progress.replace('/', ' из ');
 			if (st.elapsed) txt += ', прошло ' + fmtElapsed(st.elapsed);
+			if (st.alive != '1') {
+				/* runner мёртв, но done-маркер не записан (например, kill -9):
+				   честно показываем состояние вместо «Готово» */
+				txt = 'Статус теста неизвестен (процесс на роутере не найден). Подождите 10–15 с и обновите страницу.';
+				running = false;
+			}
 		} else if (st.state == 'stopped') {
 			txt = 'Остановлено';
 		} else if (st.state == 'error') {
@@ -191,12 +210,27 @@
 		}
 		elStatus.textContent = txt;
 
+		/* Версия пакета (status отдаёт version=, если контроллер её знает) */
+		elVersion.textContent = st.version ? (' · v' + st.version) : '';
+
+		/* Прогрессбар в стиле LuCI */
+		var pr = st.progress || '';
+		if (pr && running) {
+			var pm = pr.match(/^(\d+)\/(\d+)$/);
+			var pct = (pm && parseInt(pm[2], 10) > 0) ? Math.round(100 * parseInt(pm[1], 10) / parseInt(pm[2], 10)) : 0;
+			elProgress.title = pct + '%';
+			elProgress.firstChild.style.width = pct + '%';
+		} else {
+			elProgress.title = '0%';
+			elProgress.firstChild.style.width = '0%';
+		}
+
 		/* Авто-повтор: тест завершён, вердикт «не определён (нестабильно/медленно)»,
 		   галочка включена, повтор ещё не делался — один повторный прогон
 		   с ожиданием 8 с и повторами 5 */
 		if (st.state == 'done' && elRetest.checked && !retestUsed && undefinedSeen) {
 			retestUsed = true;
-			elStatus.textContent = 'Вердикт «не определён» — запускаю авто-повтор (ожидание 8 с, повторы 5)...';
+			elStatus.textContent = 'Вердикт «не определён» — запускаю авто-повтор (ожидание 8 с, повторы 3)...';
 			setTimeout(function () { tspuAutoRetest(); }, 1200);
 		}
 	}

@@ -63,9 +63,28 @@ local function arg_clean(value, pattern, default)
 	return value
 end
 
+-- Версия пакета: файл кладёт сборщик (build.py / apk mkpkg), содержит, например, 1.1.4
+local function pkg_version()
+	local f = io.open("/usr/share/tspu-test/version", "r")
+	if not f then
+		return nil
+	end
+	local v = f:read("*l") or ""
+	f:close()
+	if v:match("^%d+[%.%d%-r]*$") then
+		return v
+	end
+	return nil
+end
+
 function action_status()
 	luci.http.prepare_content("text/plain; charset=utf-8")
-	luci.http.write(luci.sys.exec("/usr/bin/tspu-test status 2>&1"))
+	local out = luci.sys.exec("/usr/bin/tspu-test status 2>&1")
+	local ver = pkg_version()
+	if ver then
+		out = out .. "version=" .. ver .. "\n"
+	end
+	luci.http.write(out)
 end
 
 function action_start()

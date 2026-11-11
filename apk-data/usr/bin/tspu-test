@@ -87,24 +87,9 @@ do_stop() {
 }
 
 do_status() {
-	STATE=$(sed -n 's/^state=\([a-z]*\).*/\1/p' "$STATUS" 2>/dev/null)
-	[ -n "$STATE" ] || STATE=none
 	if pid_alive; then
 		cat "$STATUS" 2>/dev/null
 		echo "alive=1"
-	elif [ "$STATE" = starting ] || [ "$STATE" = running ]; then
-		# Окно запуска: STATUS уже starting/running, но runner ещё не успел
-		# записать свой PID - раньше LuCI показывал «Готово» и прятал шкалу.
-		# Свежий STATUS при живом запуске - честный starting/running.
-		AGE=$(( $(date +%s) - $(stat -c %Y "$STATUS" 2>/dev/null || echo 0) ))
-		if [ "$AGE" -lt 20 ]; then
-			cat "$STATUS" 2>/dev/null
-			echo "alive=1"
-		else
-			echo "state=error msg=runner lost" > "$STATUS"
-			cat "$STATUS"
-			echo "alive=0"
-		fi
 	else
 		rm -f "$PIDF" 2>/dev/null
 		cat "$STATUS" 2>/dev/null

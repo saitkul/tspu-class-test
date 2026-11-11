@@ -70,8 +70,8 @@
 				<button id="tspu_btn_start" class="btn cbi-button cbi-button-apply" onclick="tspuStart()">Запустить тест</button>
 				<button id="tspu_btn_clear" class="btn cbi-button cbi-button-neutral" onclick="tspuClear()">Очистить лог</button>
 				<button id="tspu_btn_copy" class="btn cbi-button cbi-button-neutral" onclick="tspuCopy()">Скопировать отчёт</button>
-				<span style="margin-left:1em"><span style="color:#888">Статус: </span><span id="tspu_status" style="font-weight:bold">Готово</span></span>
-				<div style="color:#888; margin-top:.3em; font-size:.92em">Остановка теста из интерфейса не предусмотрена: дождитесь завершения или выполните в терминале роутера: /usr/bin/tspu-test stop</div>
+				<div id="tspu_status" style="margin-top:.3em; font-size:.92em"></div>
+				<div style="color:#888; margin-top:.3em; font-size:.92em">Идёт ли тест: видно по кнопкам (во время теста «Запустить тест» неактивна) и по растущему логу. Остановка — только в терминале роутера: /usr/bin/tspu-test stop</div>
 			</div>
 		</div>
 		<div class="cbi-value" id="tspu_verdict" style="display:none">
@@ -96,12 +96,6 @@
 			</div>
 		</div>
 		<div style="margin-top:.4em">
-			<div style="display:flex; align-items:center; gap:.7em" id="tspu_progress_row">
-				<div class="cbi-progressbar" id="tspu_progress" title="0%" style="display:none; flex:1">
-					<div style="width:0%"></div>
-				</div>
-				<span id="tspu_pct" style="display:none; min-width:3.5em; color:#666; font-weight:bold">0%</span>
-			</div>
 			<textarea id="tspu_log" readonly="readonly" wrap="off" style="width:100%; height:420px; font-family:monospace; white-space:pre; padding:.5em"></textarea>
 		</div>
 		<div class="cbi-value" id="tspu_dl_block" style="margin-top:.4em">
@@ -146,19 +140,10 @@
 	var elVerdictText = document.getElementById('tspu_verdict_text');
 	var elAttemptsWrap = document.getElementById('tspu_attempts_wrap');
 	var elAttempts = document.getElementById('tspu_attempts');
-	var elProgress = document.getElementById('tspu_progress');
-	var elPct = document.getElementById('tspu_pct');
 	var lastLog = null;
 
 	elDlShort.href = U_DL + '?which=short';
 	elDlFull.href = U_DL + '?which=full';
-
-	function fmtElapsed(sec) {
-		sec = parseInt(sec, 10) || 0;
-		var m = Math.floor(sec / 60);
-		var s = sec % 60;
-		return m + ':' + (s < 10 ? '0' : '') + s;
-	}
 
 	function parseStatus(text) {
 		var o = { state: 'none', alive: '0', progress: '', elapsed: '', msg: '', haslog: '0' };
@@ -168,8 +153,8 @@
 		});
 		/* alive=0 при running — runner мёртв, тест считаем завершённым.
 		   starting при alive=0 НЕ подменяем: это окно запуска (PID ещё не
-		   записан) — иначе шкала мелькала 0% и исчезала, статус врал «Готово».
-		   Залипший starting сервер сам переведёт в error по возрасту STATUS. */
+		   записан). Кнопками управляет лог (applyLog), здесь только
+		   версия в заголовок и ошибка запуска. */
 		if (o.alive != '1' && o.state == 'running')
 			o.state = 'done';
 		return o;
@@ -188,31 +173,15 @@
 	}
 
 	function applyStatus(text) {
-		/* Пустой/битый ответ (сбой сети, обрыв сессии) — ничего не трогаем:
-		   и статус, и шкала, и кнопки остаются в последнем честном состоянии */
+		/* Пустой/битый ответ (сбой сети, обрыв сессии) — ничего не трогаем */
 		if (!text || text.indexOf('state=') < 0) return;
 		var st = parseStatus(text);
-		var running = (st.state == 'running' || st.state == 'starting' || st.state == 'started');
-		setRunning(running);
-
-
-		var txt = 'Готово';
-		if (st.state == 'running' || st.state == 'starting' || st.state == 'started') {
-			txt = 'Идёт тест';
-			if (st.progress) txt += ': ' + st.progress.replace('/', ' из ');
-			if (st.elapsed) txt += ', прошло ' + fmtElapsed(st.elapsed);
-			if (st.alive != '1') {
-				/* runner мёртв, но done-маркер не записан (например, kill -9):
-				   честно показываем состояние вместо «Готово» */
-				txt = 'Статус теста неизвестен (процесс на роутере не найден). Подождите 10–15 с и обновите страницу.';
-				running = false;
-			}
-		} else if (st.state == 'stopped') {
-			txt = 'Остановлено';
-		} else if (st.state == 'error') {
-			txt = 'Ошибка: ' + (st.msg || 'см. вывод теста');
+		/* Надпись «Статус» убрана по решению владельца. Из status берём
+		   только версию (заголовок) и ошибку запуска. Кнопками управляет
+		   ЛОГ (см. applyLog) — он надёжнее статусного опроса. */
+		if (st.state == 'error') {
+			elStatus.textContent = 'Ошибка: ' + (st.msg || 'см. вывод теста');
 		}
-		elStatus.textContent = txt;
 
 		/* Версия пакета (status отдаёт version=, если контроллер её знает) —
 		   показывается один раз в заголовке страницы */
@@ -220,30 +189,12 @@
 			titleVerDone = true;
 			elTitleVer.textContent = ' (версия: v' + st.version + ')';
 		}
-
-		/* Прогрессбар + процент: показываются при любом живом тесте
-		   (running/starting/started, включая окно запуска без прогресса),
-		   прячутся ТОЛЬКО при явном завершении (done/stopped/error).
-		   Никаких промежуточных скрытий — шкала больше не мелькает. */
-		var prog = running;
-		var pr = st.progress || '';
-		if (prog) {
-			var pm = pr.match(/^(\d+)\/(\d+)$/);
-			var pct = (pm && parseInt(pm[2], 10) > 0) ? Math.round(100 * parseInt(pm[1], 10) / parseInt(pm[2], 10)) : 0;
-			elProgress.title = pct + '%';
-			elProgress.firstChild.style.width = pct + '%';
-			elPct.textContent = pct + '%';
-		}
-		elProgress.style.display = prog ? '' : 'none';
-		elPct.style.display = prog ? '' : 'none';
-		if (!prog) elPct.textContent = '';
 	}
 
 	function xhr(url, cb) {
 		try {
 			var x = new XMLHttpRequest();
-			/* cache-buster: без него браузер может отдать кэшированный ответ
-			   и статус зависнет на «Готово» при идущем тесте */
+			/* cache-buster: без него браузер может отдать кэшированный ответ */
 			x.open('GET', url + (url.indexOf('?') >= 0 ? '&' : '?') + '_=' + Date.now(), true);
 			x.onreadystatechange = function () {
 				if (x.readyState === 4 && x.status === 200 && cb) cb(x.responseText);
@@ -256,6 +207,15 @@
 		var clean = (text || '').replace(/\r/g, '');
 		if (clean == lastLog) return;
 		lastLog = clean;
+		/* Кнопки управляются по ЛОГУ, а не по статусному опросу: лог доходит
+		   всегда, а status-эндпоинт на части прошивок ненадёжен.
+		   «=== конец отчёта ===» в логе → тест завершён; баннер нового прогона
+		   без конца отчёта → тест идёт. */
+		if (clean.indexOf('=== конец отчёта ===') >= 0) {
+			setRunning(false);
+		} else if (clean.indexOf('В данный момент производится тестирование') >= 0) {
+			setRunning(true);
+		}
 		/* Вердикт и попытки печатаются дважды (в ИТОГ-блоке и повторно в отчёте) -
 		   берём только часть лога до отчёта, чтобы не дублировать */
 		var cut = clean.indexOf('=== ОТЧЁТ ДЛЯ issue #1');
@@ -321,9 +281,8 @@
 		var url = U_START + '?domain=' + encodeURIComponent(elDomain.value || 'www.youtube.com') +
 			'&repeats=' + encodeURIComponent(elRep.value) +
 			'&wait=' + encodeURIComponent(elWait.value);
+		/* Кнопки гаснут сразу по клику; дальше их держит лог (applyLog) */
 		setRunning(true);
-		/* Статус не должен врать «Готово» до первого ответа status */
-		elStatus.textContent = 'Запуск теста…';
 		xhr(url, function () { update(); });
 	};
 

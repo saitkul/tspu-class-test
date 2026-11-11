@@ -68,9 +68,25 @@ jobs:
             --script "post-upgrade:apk-scripts/post-upgrade" \
             --script "pre-deinstall:apk-scripts/pre-deinstall" \
             --script "post-deinstall:apk-scripts/post-deinstall" \
-            --output luci-app-tspu-test-1.1.4-r1.apk \
-            --files apk-data
+          --output luci-app-tspu-test-1.1.4-r1.apk \
+          --files apk-data
           ls -la luci-app-tspu-test-1.1.4-r1.apk
+
+      - name: Verify package installs into clean root
+        run: |
+          # Проверка, которую делает роутер: установить пакет в пустой root
+          mkdir -p /tmp/troot
+          ./sbin/apk.static --allow-untrusted --initdb --root /tmp/troot \
+            add ./luci-app-tspu-test-1.1.4-r1.apk
+          echo "=== installed tree ==="
+          find /tmp/troot -type f | sort
+          echo "=== version file ==="
+          cat /tmp/troot/usr/share/tspu-test/version
+          echo "=== markers ==="
+          grep -c "elClear.disabled = r" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
+          grep -c "tspu_version" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
+          grep -c "pkg_version" /tmp/troot/usr/lib/lua/luci/controller/tspu-test.lua
+          grep -c "SCRIPT_VER=\"TSPU test 1.1.4" /tmp/troot/usr/bin/tspu-test
 
       - uses: actions/upload-artifact@v4
         with:

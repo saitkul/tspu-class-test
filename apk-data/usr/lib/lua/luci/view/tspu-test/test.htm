@@ -98,8 +98,11 @@
 			</div>
 		</div>
 		<div style="margin-top:.4em">
-			<div class="cbi-progressbar" id="tspu_progress" title="0%" style="display:none">
-				<div style="width:0%"></div>
+			<div style="display:flex; align-items:center; gap:.7em" id="tspu_progress_row">
+				<div class="cbi-progressbar" id="tspu_progress" title="0%" style="display:none; flex:1">
+					<div style="width:0%"></div>
+				</div>
+				<span id="tspu_pct" style="display:none; min-width:3.5em; color:#666; font-weight:bold">0%</span>
 			</div>
 			<textarea id="tspu_log" readonly="readonly" wrap="off" style="width:100%; height:420px; font-family:monospace; white-space:pre; padding:.5em"></textarea>
 		</div>
@@ -148,6 +151,7 @@
 	var elAttemptsWrap = document.getElementById('tspu_attempts_wrap');
 	var elAttempts = document.getElementById('tspu_attempts');
 	var elProgress = document.getElementById('tspu_progress');
+	var elPct = document.getElementById('tspu_pct');
 	var elRetest = document.getElementById('tspu_autoretest');
 	var retestUsed = false;
 	var undefinedSeen = false;
@@ -169,7 +173,11 @@
 			var m = line.match(/^([a-z_]+)=(.*)$/);
 			if (m) o[m[1]] = m[2];
 		});
-		if (o.alive != '1' && (o.state == 'running' || o.state == 'starting'))
+		/* alive=0 при running — runner мёртв, тест считаем завершённым.
+		   starting при alive=0 НЕ подменяем: это окно запуска (PID ещё не
+		   записан) — иначе шкала мелькала 0% и исчезала, статус врал «Готово».
+		   Залипший starting сервер сам переведёт в error по возрасту STATUS. */
+		if (o.alive != '1' && o.state == 'running')
 			o.state = 'done';
 		return o;
 	}
@@ -185,6 +193,8 @@
 		elClear.disabled = r;
 		elCopy.disabled = r;
 		elProgress.style.display = r ? '' : 'none';
+		elPct.style.display = r ? '' : 'none';
+		if (!r) elPct.textContent = '';
 	}
 
 	function applyStatus(text) {
@@ -218,13 +228,14 @@
 			elTitleVer.textContent = ' (версия: v' + st.version + ')';
 		}
 
-		/* Прогрессбар в стиле LuCI */
+		/* Прогрессбар в стиле LuCI + видимый процент справа */
 		var pr = st.progress || '';
 		if (pr && running) {
 			var pm = pr.match(/^(\d+)\/(\d+)$/);
 			var pct = (pm && parseInt(pm[2], 10) > 0) ? Math.round(100 * parseInt(pm[1], 10) / parseInt(pm[2], 10)) : 0;
 			elProgress.title = pct + '%';
 			elProgress.firstChild.style.width = pct + '%';
+			elPct.textContent = pct + '%';
 		} else {
 			elProgress.title = '0%';
 			elProgress.firstChild.style.width = '0%';

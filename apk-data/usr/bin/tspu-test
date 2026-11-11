@@ -70,6 +70,16 @@ do_stop() {
 	# Страховка: TERM по runner-процессу срабатывает на его trap (v7) -
 	# blockcheck2 останавливается, Zapret2 запускается обратно.
 	kill $(pgrep -f '[t]spu-test _run') 2>/dev/null
+	# Обёртка blockcheck2 на случай, если trap раннера не успел её убить
+	kill $(pgrep -f '[b]lockcheck2.sh') 2>/dev/null
+	# Дать trap-у время вернуть Zapret2; не умер - добить принудительно
+	i=0
+	while [ $i -lt 3 ] && pid_alive; do sleep 1; i=$((i+1)); done
+	if pid_alive; then
+		kill -9 "$(cat "$PIDF" 2>/dev/null)" 2>/dev/null
+		kill -9 $(pgrep -f '[t]spu-test _run') 2>/dev/null
+		kill -9 $(pgrep -f '[b]lockcheck2.sh') 2>/dev/null
+	fi
 	sleep 1
 	rm -f "$PIDF"
 	echo "state=stopped" > "$STATUS"
@@ -77,9 +87,24 @@ do_stop() {
 }
 
 do_status() {
+	STATE=$(sed -n 's/^state=\([a-z]*\).*/\1/p' "$STATUS" 2>/dev/null)
+	[ -n "$STATE" ] || STATE=none
 	if pid_alive; then
 		cat "$STATUS" 2>/dev/null
 		echo "alive=1"
+	elif [ "$STATE" = starting ] || [ "$STATE" = running ]; then
+		# Окно запуска: STATUS уже starting/running, но runner ещё не успел
+		# записать свой PID - раньше LuCI показывал «Готово» и прятал шкалу.
+		# Свежий STATUS при живом запуске - честный starting/running.
+		AGE=$(( $(date +%s) - $(stat -c %Y "$STATUS" 2>/dev/null || echo 0) ))
+		if [ "$AGE" -lt 20 ]; then
+			cat "$STATUS" 2>/dev/null
+			echo "alive=1"
+		else
+			echo "state=error msg=runner lost" > "$STATUS"
+			cat "$STATUS"
+			echo "alive=0"
+		fi
 	else
 		rm -f "$PIDF" 2>/dev/null
 		cat "$STATUS" 2>/dev/null

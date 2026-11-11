@@ -1,0 +1,16 @@
+{
+	"admin/services/tspu-test": {
+		"title": "TSPU test",
+		"order": 65,
+		"action": {
+			"type": "template",
+			"path": "tspu-test/test"
+		},
+		"depends": {
+			"acl": [ "luci-app-tspu-test" ],
+			"fs": {
+				"/usr/bin/tspu-test": "executable"
+			}
+		}
+	}
+}

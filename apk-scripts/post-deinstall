@@ -1,0 +1,5 @@
+#!/bin/sh
+rm -f /tmp/tspu_test.pid /tmp/tspu_test.status /tmp/tspu_test_run.log
+rm -f /tmp/class_test.log /tmp/class_test.log.short
+rm -f /tmp/class_report.awk /tmp/class_report.txt /tmp/list_stage1.txt /tmp/class_runner.sh
+exit 0

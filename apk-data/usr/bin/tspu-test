@@ -1,0 +1,431 @@
+#!/bin/sh
+# ============================================================
+#  TSPU test - CLI-ядро приложения luci-app-tspu-test
+#  Запуск «класс-теста ТСПУ» (ядро tspu-class-test v2.2) через
+#  blockcheck2 из /opt/zapret2. Определяет, какие механики
+#  десинхронизации пропускает ТСПУ провайдера (16 стратегий,
+#  TLS 1.2 + 1.3, SCANLEVEL=force), печатает вердикт «КЛАСС ТСПУ».
+#
+#  Команды:
+#    tspu-test start [ДОМЕН(Ы)] [ПОВТОРОВ] [ОЖИДАНИЕ_С]  фоновый запуск
+#        несколько доменов - через пробел, каждый тестируется отдельно
+#    tspu-test stop                                      остановить (Zapret2 вернётся)
+#    tspu-test status                                    строки state=/progress=/elapsed=/alive=
+#    tspu-test log                                       показать вывод текущего/последнего теста
+#    tspu-test clearlog                                  очистить файл вывода
+#    tspu-test _run DOM REP TMO                          (внутренняя, фоновая)
+#
+#  Файлы (только /tmp, самоуничтожаются при перезагрузке):
+#    /tmp/tspu_test.status    - состояние для LuCI
+#    /tmp/tspu_test_run.log   - вывод теста (показывается в LuCI)
+#    /tmp/tspu_test.pid       - PID фонового процесса
+#    /tmp/class_test.log(.short), /tmp/class_report.txt, /tmp/list_stage1.txt
+#
+#  Конфигурация Zapret2 не изменяется. На время теста служба zapret2
+#  останавливается и запускается обратно по завершении/остановке/сбою.
+# ============================================================
+
+STATUS=/tmp/tspu_test.status
+RUNLOG=/tmp/tspu_test_run.log
+PIDF=/tmp/tspu_test.pid
+LIST=/tmp/list_stage1.txt
+AWKF=/tmp/class_report.awk
+
+pid_alive() {
+	[ -f "$PIDF" ] && kill -0 "$(cat "$PIDF" 2>/dev/null)" 2>/dev/null
+}
+
+do_start() {
+	DOM=${1:-www.youtube.com}
+	REP=${2:-3}
+	TMO=${3:-2.5}
+	# Домен(ы): допускается несколько через пробел
+	echo "$DOM" | grep -qE '^[A-Za-z0-9.-]+( [A-Za-z0-9.-]+)*$' || { echo "state=error msg=invalid domain"; exit 1; }
+	case "$DOM" in -*) echo "state=error msg=invalid domain"; exit 1 ;; esac
+	case "$REP" in *[!0-9]*) REP=3 ;; esac
+	case "$TMO" in *[!0-9.]*) TMO=2.5 ;; esac
+	if pid_alive; then echo "state=running"; exit 0; fi
+	if [ ! -f /opt/zapret2/blockcheck2.sh ]; then
+		echo "state=error msg=Zapret2 not found in /opt/zapret2"
+		exit 1
+	fi
+	command -v curl >/dev/null 2>&1 || { echo "state=error msg=curl not found"; exit 1; }
+	command -v awk >/dev/null 2>&1 || { echo "state=error msg=awk not found"; exit 1; }
+	echo "state=starting" > "$STATUS"
+	# Фоновый запуск без nohup/setsid: rpcd (LuCI) и dropbear не рассылают
+	# HUP своим фоновым детям с перенаправленным stdio - процесс живёт.
+	/bin/sh -c "/usr/bin/tspu-test _run \"$DOM\" \"$REP\" \"$TMO\" > $RUNLOG 2>&1 &"
+	sleep 1
+	if pid_alive; then
+		echo "state=started"
+	else
+		echo "state=error msg=failed to start"
+		head -n 5 "$RUNLOG" 2>/dev/null
+		exit 1
+	fi
+}
+
+do_stop() {
+	if pid_alive; then kill "$(cat "$PIDF" 2>/dev/null)" 2>/dev/null; fi
+	# Страховка: TERM по runner-процессу срабатывает на его trap (v7) -
+	# blockcheck2 останавливается, Zapret2 запускается обратно.
+	kill $(pgrep -f '[t]spu-test _run') 2>/dev/null
+	sleep 1
+	rm -f "$PIDF"
+	echo "state=stopped" > "$STATUS"
+	echo "state=stopped"
+}
+
+do_status() {
+	if pid_alive; then
+		cat "$STATUS" 2>/dev/null
+		echo "alive=1"
+	else
+		rm -f "$PIDF" 2>/dev/null
+		cat "$STATUS" 2>/dev/null
+		echo "alive=0"
+	fi
+	# Есть ли сформированные логи (для кнопок скачивания в LuCI)
+	[ -s /tmp/class_test.log.short ] && echo "haslog=1" || echo "haslog=0"
+}
+
+# ============================================================
+#  Фоновый раннер: ядро tspu-class-test v2.2.
+#  Несколько доменов = несколько последовательных прогонов blockcheck2,
+#  у каждого свой лог, ИТОГ и секция отчёта (blockcheck2 принимает
+#  только один домен за прогон).
+# ============================================================
+do_run() {
+	DOM=${1:-www.youtube.com}
+	REP=${2:-3}
+	TMO=${3:-2.5}
+	S=$LIST
+	A=$AWKF
+	L=/tmp/class_test.log
+	RFULL=/tmp/class_report.txt
+	SCRIPT_VER="TSPU test @APP_VERSION@ (ядро tspu-class-test v2.2): 16 стратегий, SCANLEVEL=force"
+
+	echo $$ > "$PIDF"
+
+	TTY=0
+	[ -t 1 ] && TTY=1
+	prog() { # $1=DONE $2=TOTAL $3=ELAPSED $4=ДОМЕН
+		if [ "$TTY" = 1 ]; then
+			printf '\r  Стратегий проверено: %s из %s, прошло %s. Домен: %s   ' "$1" "$2" "$3" "$4"
+		else
+			echo "state=running progress=$1/$2 elapsed=$3 domain=$4" > "$STATUS"
+		fi
+	}
+
+	[ -f "$S" ] || { echo "Не найден файл со списком: $S"; exit 1; }
+	S=$(readlink -f "$S") || { echo "Не удалось определить полный путь к списку: $S"; exit 1; }
+
+	[ -f /opt/zapret2/blockcheck2.sh ] || { echo "Не найден /opt/zapret2/blockcheck2.sh: Zapret2 не установлен?"; exit 1; }
+	command -v curl >/dev/null 2>&1 || { echo "Не найден curl: blockcheck2 без него не работает."; exit 1; }
+	command -v awk >/dev/null 2>&1 || { echo "Не найден awk."; exit 1; }
+	# DNS-проверка каждого домена
+	for D in $DOM; do
+		nslookup "$D" >/dev/null 2>&1 || echo "ВНИМАНИЕ: $D не резолвится. Проверьте DNS и отключите VPN, иначе результат теста будет неверным."
+	done
+
+	cat > $A <<'AWK'
+function norm(x) { gsub(/\r/, "", x); gsub(/[ \t]+/, " ", x); sub(/^ /, "", x); sub(/ $/, "", x); return x }
+NR==FNR { x = norm($0); if (x != "" && substr(x, 1, 1) != "#") { n++; lst[n] = x } next }
+/^- curl_test_https_tls1[23] ipv4 / {
+  cur = ""
+  i = index($0, " : nfqws2 ")
+  if (i > 0) {
+    head = substr($0, 1, i - 1); s = norm(substr($0, i + 10))
+    sub(/^- curl_test_https_/, "", head); split(head, h, " "); p = h[1]
+    for (k = 1; k <= n; k++) if (lst[k] == s) { cur = k; key = p SUBSEP k; tot[key] = 0; ok[key] = 0; part[key] = 0; seen = 1 }
+  }
+  next
+}
+/^\* / || /^clearing/ || /^!!!!! curl/ { cur = ""; next }
+rep == 1 && /^curl: / {
+  if (cur != "" && match($0, /with [0-9]+ bytes received/)) { b = substr($0, RSTART + 5, RLENGTH - 20) + 0; if (b > 0) part[key] = 1 }
+  next
+}
+rep == 1 && /^!!!!! AVAILABLE !!!!!/ { if (cur != "") { tot[key] = 1; ok[key] = 1 } next }
+rep == 1 && /^UNAVAILABLE/ { if (cur != "") tot[key] = 1; next }
+/^\[attempt [0-9]+\]/ {
+  if (cur != "") {
+    tot[key]++
+    if ($0 ~ /AVAILABLE/) ok[key]++
+    else if (match($0, /with [0-9]+ bytes received/)) { b = substr($0, RSTART + 5, RLENGTH - 20) + 0; if (b > 0) part[key]++ }
+  }
+  next
+}
+END {
+  if (!seen) { print "ВНИМАНИЕ: в логе нет строк из вашего списка. Пришлите краткий лог."; exit }
+  np = split("tls12 tls13", P, " "); slowany = 0
+  for (q = 1; q <= np; q++) {
+    p = P[q]; st = ""; fl = ""; sl = ""; det = ""
+    for (k = 1; k <= n; k++) {
+      key = p SUBSEP k
+      if (key in tot && tot[key] > 0) {
+        det = det sprintf(" %d:%d/%d%s", k, ok[key], tot[key], (part[key] > 0 ? "~" part[key] : ""))
+        if (ok[key] == tot[key]) st = st " " k
+        else if (ok[key] > 0) fl = fl " " k
+        else if (part[key] > 0) { sl = sl " " k; slowany = 1 }
+      }
+    }
+    printf "%s стабильно:%s | нестабильно:%s | медленно:%s\n", p, (st == "" ? " нет" : st), (fl == "" ? " нет" : fl), (sl == "" ? " нет" : sl)
+    printf "   попытки (строка:успешных/всего, ~N = N попыток, где данные пошли, но не успели загрузиться):%s\n", det
+    S[p] = st; F[p] = fl; M[p] = sl; D[p] = det
+    # Вердикт класса ТСПУ. Техника и фулинг разделены: 1-6 - нарезка без фейков,
+    # 7-10 - голый фейк с разными фулингами (md5/ttl/badsum/SNI), 11-16 - фейк + нарезка.
+    dis = ""; spl = ""; fk = ""; cb = ""; cut = ""
+    for (k = 1; k <= 16; k++) if (index(st " ", " " k " ") > 0) {
+      if (k <= 6) cut = cut " " k
+      if (k == 1 || k == 4 || k == 6) dis = dis " " k
+      else if (k == 2 || k == 5) spl = spl " " k
+      else if (k >= 7 && k <= 10) fk = fk " " k
+      else cb = cb " " k
+    }
+    if (st == "") {
+      if (fl != "" || sl != "") V[p] = "не определён (нестабильно/медленно) - повторите с ожиданием 8 с и повторами 5"
+      else V[p] = "не определён (не прошло ни одной строки)"
+    } else if (dis != "" && spl != "") {
+      V[p] = "L0-: нарезка пробивает и без фейков, хватит простого разреза (строки" cut ")"
+      if (index(spl, " 2 ") == 0) V[p] = V[p] "; чистый multisplit (2) ТСПУ склеивает - прямому разрезу помогает seqovl (5)"
+    }
+    else if (dis != "") V[p] = "L0: обратный порядок пробивает, прямой ТСПУ склеивает - достаточно multidisorder (строки" cut ")"
+    else if (spl != "") {
+      V[p] = "аномалия: прямой разрез пробивает (строки" cut "), а обратный порядок ТСПУ собирает - опирайтесь на multisplit/seqovl"
+      if (index(spl, " 2 ") == 0) V[p] = V[p] "; прямой - только с seqovl (5)"
+    }
+    else if (cb != "") V[p] = "L2: нарезка проходит только вместе с фейком (строки" cb ")"
+    else if (fk != "") V[p] = "особый: ТСПУ верит голому фейку (строки" fk "), но режет нарезку"
+    else V[p] = "особый: прошла только строка 3 (разрез на границе SLD) - используйте pos=sld"
+    nt = ""
+    if (fk != "") nt = nt "Строки" fk ": ТСПУ ВЕРИТ фейковому ClientHello (решение принимается по фейку), сервер отбрасывает фейк по фулингу. "
+    if (fk == "" && cb != "" && (dis != "" || spl != "")) nt = nt "Голые фейки (7-10) отсекаются: фейк полезен только вместе с нарезкой (прошли" cb "). "
+    if (index(st " ", " 3 ") > 0 && dis == "") nt = nt "Разрез на границе SLD (3) проходит без внутреннего - годится pos=sld. "
+    if (dis != "" && index(st " ", " 3 ") == 0) nt = nt "Разрез на границе SLD (3) не проходит - работают разрезы внутри слова SLD (midsld) и ведущий байт (pos=1,...). "
+    NT[p] = nt
+  }
+  split("TLS 1.2|TLS 1.3", LBL, "|")
+  for (q = 1; q <= np; q++) {
+    printf "КЛАСС ТСПУ (%s): %s\n", LBL[q], V[P[q]]
+    if (NT[P[q]] != "") printf "   %s\n", NT[P[q]]
+  }
+  if (rpt != "") {
+    split("TLS 1.2|TLS 1.3", LBL, "|")
+    for (q = 1; q <= np; q++) {
+      p = P[q]
+      printf "%s: стабильно:%s | нестабильно:%s | медленно:%s\n", LBL[q], (S[p] == "" ? " нет" : S[p]), (F[p] == "" ? " нет" : F[p]), (M[p] == "" ? " нет" : M[p]) > rpt
+    }
+    for (q = 1; q <= np; q++) printf "Попытки %s (строка:успешных/всего):%s\n", LBL[q], D[P[q]] > rpt
+    for (q = 1; q <= np; q++) {
+      printf "КЛАСС ТСПУ (%s): %s\n", LBL[q], V[P[q]] > rpt
+      if (NT[P[q]] != "") printf "   %s\n", NT[P[q]] > rpt
+    }
+    print "Рабочие стратегии (прошли все попытки):" > rpt
+    any = 0
+    for (k = 1; k <= n; k++) {
+      a = index(S["tls12"] " ", " " k " ") > 0; b = index(S["tls13"] " ", " " k " ") > 0
+      if (a || b) { printf "%d [%s]: %s\n", k, (a && b ? "TLS 1.2 и 1.3" : (a ? "только TLS 1.2" : "только TLS 1.3")), lst[k] > rpt; any = 1 }
+    }
+    if (!any) print "нет" > rpt
+    close(rpt)
+  }
+  if (slowany) print "ПОДСКАЗКА: у строк «медленно» соединение установилось и данные пошли, но не успели загрузиться за отведённое время. Это не блокировка. Увеличьте «Ожидание» до 8 с и повторите."
+}
+AWK
+
+	WAS=0
+	pgrep nfqws2 >/dev/null 2>&1 && WAS=1
+	CLEANED=0
+	BPID=
+
+	cleanup() {
+		[ "$CLEANED" = 1 ] && return
+		CLEANED=1
+		if [ -n "$BPID" ] && kill -0 "$BPID" 2>/dev/null; then
+			kill "$BPID" 2>/dev/null
+			wait "$BPID" 2>/dev/null
+		fi
+		[ "$TTY" = 1 ] && echo
+		if [ "$WAS" = 1 ]; then
+			if /etc/init.d/zapret2 start >/dev/null 2>&1; then
+				echo "Zapret2 снова запущен."
+			else
+				echo "ВНИМАНИЕ: не удалось запустить Zapret2. Выполните вручную: /etc/init.d/zapret2 start"
+			fi
+		fi
+	}
+	trap cleanup EXIT
+	trap 'cleanup; exit 130' INT TERM HUP
+
+	[ "$WAS" = 1 ] && /etc/init.d/zapret2 stop >/dev/null 2>&1
+	cd /opt/zapret2 || exit 1
+	CURLV=$(curl -V 2>/dev/null | sed -n 1p)
+	NV=""
+	for b in ./nfq2/nfqws2 ./nfqws2 "$(command -v nfqws2 2>/dev/null)"; do
+		[ -n "$b" ] && [ -x "$b" ] || continue
+		NV=$("$b" --version 2>/dev/null | sed -n 1p)
+		[ -n "$NV" ] && break
+	done
+
+	NLINES=$(grep -cvE '^[[:space:]]*(#|$)' "$S")
+	NUMDOM=$(echo "$DOM" | wc -w)
+	TOTAL=$(( NLINES * 2 * NUMDOM ))
+	T0=$(date +%s)
+	DOMNUM=0
+
+	: > $L
+	: > $RFULL
+
+	echo "В данный момент производится тестирование сети, пожалуйста подождите (обычно несколько минут)..."
+
+	for CURDOM in $DOM; do
+		DOMNUM=$((DOMNUM+1))
+		DL=/tmp/class_test.log.d$DOMNUM
+		R=/tmp/class_report.d$DOMNUM
+		rm -f $R
+
+		BATCH=1 SCANLEVEL=force TEST=custom LIST_HTTPS_TLS12=$S LIST_HTTPS_TLS13=$S DOMAINS="$CURDOM" IPVS=4 ENABLE_HTTP=0 ENABLE_HTTPS_TLS12=1 ENABLE_HTTPS_TLS13=1 ENABLE_HTTP3=0 REPEATS=$REP CURL_HTTPS_GET=1 CURL_MAX_TIME="$TMO" ./blockcheck2.sh > $DL 2>&1 &
+		BPID=$!
+		while kill -0 "$BPID" 2>/dev/null; do
+			DONE_D=$(grep -c '^- curl_test_https_tls1[23] .* : nfqws2 ' $DL 2>/dev/null)
+			# На один домен идёт NLINES стратегий x 2 протокола:
+			# без x2 счётчик застревает на половине (баг «16 из 32»)
+			[ "$DONE_D" -gt $(( NLINES * 2 )) ] 2>/dev/null && DONE_D=$(( NLINES * 2 ))
+			DONE=$(( (DOMNUM-1) * NLINES * 2 + DONE_D ))
+			EL=$(( $(date +%s) - T0 ))
+			ELF=$(printf '%d:%02d' $((EL / 60)) $((EL % 60)))
+			prog "$DONE" "$TOTAL" "$ELF" "$CURDOM"
+			# Статус для LuCI обновляется и при терминальном запуске -
+			# иначе страница показывает «Готово» при живом тесте
+			echo "state=running progress=$DONE/$TOTAL elapsed=$EL domain=$CURDOM" > "$STATUS"
+			sleep 2
+		done
+		wait "$BPID" 2>/dev/null
+
+		cat $DL >> $L
+
+		NB12=0; NB13=0
+		grep -q "curl_test_https_tls12 .*working without bypass" $DL && NB12=1
+		grep -q "curl_test_https_tls13 .*working without bypass" $DL && NB13=1
+
+		echo
+		echo "=== ИТОГ (домен: $CURDOM, повторов: $REP, ожидание: $TMO с) ==="
+		echo "=== ДОМЕН $DOMNUM из $NUMDOM: $CURDOM ===" >> $RFULL
+		echo "Тест: $CURDOM, повторов $REP, ожидание $TMO с, IPv4, SCANLEVEL=force" >> $RFULL
+		if [ $NB12 = 1 ] && [ $NB13 = 1 ]; then
+			echo "Результат: $CURDOM открывается без обхода (стратегии всё равно проверены, SCANLEVEL=force)." > $R
+			echo "ВНИМАНИЕ: $CURDOM открывается и без обхода. Сканирование шло в режиме SCANLEVEL=force, стратегии проверены."
+			echo "Если тормозит или не грузится видео - дело обычно в видеодомене googlevideo.com, а не в www.youtube.com."
+		elif ! grep -q "^\* SUMMARY" $DL; then
+			echo "Результат: тест не завершился (в логе нет блока SUMMARY)." > $R
+			echo "ТЕСТ НЕ ЗАВЕРШИЛСЯ (в логе нет блока SUMMARY). Пришлите краткий лог."
+		else
+			awk -v rep="$REP" -v rpt="$R" -f $A $S $DL
+			[ -s $R ] || echo "Результат: в логе нет строк из списка." > $R
+			if [ $NB12 = 1 ]; then
+				echo "TLS 1.2: открывается без обхода (стратегии всё равно проверены, SCANLEVEL=force)."
+				echo "TLS 1.2: открывается без обхода (стратегии всё равно проверены)." >> $R
+			fi
+			if [ $NB13 = 1 ]; then
+				echo "TLS 1.3: открывается без обхода (стратегии всё равно проверены, SCANLEVEL=force)."
+				echo "TLS 1.3: открывается без обхода (стратегии всё равно проверены)." >> $R
+			fi
+		fi
+		cat $R >> $RFULL
+		rm -f $R
+	done
+
+	# Краткий лог: весь лог без мусора от curl
+	awk '
+	  /^More details here:/ { next }
+	  /^curl failed to verify/ { next }
+	  /^establish a secure connection/ { next }
+	  /^how to fix it/ { next }
+	  /^$/ { next }
+	  /curl: \([0-9]+\)/ && length($0) > 90 {
+	    if (match($0, /curl: \([0-9]+\)/)) { print substr($0, 1, RSTART + RLENGTH - 1) " <полный текст ошибки - в class_test.log>"; next }
+	  }
+	  { print }
+	' $L > $L.short
+
+	MODEL=$(cat /tmp/sysinfo/model 2>/dev/null)
+	FW=$(. /etc/openwrt_release 2>/dev/null && echo "$DISTRIB_DESCRIPTION ($DISTRIB_ARCH)")
+	echo
+	echo "=== ОТЧЁТ ДЛЯ issue #1 (скопируйте всё между этими строками) ==="
+	echo "Скрипт: ${SCRIPT_VER}"
+	echo "Роутер: ${MODEL:-неизвестно}"
+	echo "Прошивка: ${FW:-неизвестно}"
+	echo "Домены: $DOM"
+	echo "curl: ${CURLV:-неизвестно}"
+	echo "nfqws2: ${NV:-неизвестно}"
+	case "$CURLV" in
+	  *mbedTLS*|*LibreSSL*)
+	    echo "TLS-бэкенд curl без kyber: ClientHello уходит одним пакетом. У браузеров (Chrome/Firefox) hello"
+	    echo "двухпакетный (kyber) и другой отпечаток - результаты нарезки переносятся не 1:1. Финальная проверка - в браузере (Инкогнито / Ctrl+F5)."
+	    ;;
+	esac
+	cat $RFULL
+	echo "=== конец отчёта ==="
+	echo
+	echo "Краткий лог: /tmp/class_test.log.short"
+	echo "Полный лог: $L"
+
+	rm -f "$PIDF"
+	echo "state=done exitcode=0" > "$STATUS"
+}
+
+# --- 16 стратегий stage1 (v2.2): нарезка / голый фейк / комбинации ---
+make_list() {
+	cat > $LIST <<'EOF'
+# --- 1-6: чистая нарезка, БЕЗ фейков (техника в чистом виде) ---
+--payload=tls_client_hello --lua-desync=multidisorder:pos=midsld
+--payload=tls_client_hello --lua-desync=multisplit:pos=midsld
+--payload=tls_client_hello --lua-desync=multidisorder:pos=sld
+--payload=tls_client_hello --lua-desync=multidisorder:pos=1,midsld
+--payload=tls_client_hello --lua-desync=multisplit:pos=1,midsld:seqovl=5:seqovl_pattern=0x1603030000
+--payload=tls_client_hello --lua-desync=multidisorder:pos=midsld:seqovl=midsld-1:seqovl_pattern=0x1603030000
+# --- 7-10: голый фейк, разная «дурка» (изолирует фулинг от техники) ---
+--payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5:repeats=6
+--payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:ip_autottl=-2,3-20:repeats=6
+--payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:badsum:repeats=6
+--payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5:tls_mod=rnd,rndsni,dupsid:repeats=6
+# --- 11-16: фейк вместе с нарезкой (комбинации) ---
+--payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5:repeats=6 --lua-desync=multisplit:pos=midsld
+--payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5:repeats=6 --lua-desync=multidisorder:pos=midsld
+--payload=tls_client_hello --lua-desync=fakeddisorder:pos=midsld:tcp_md5
+--payload=tls_client_hello --lua-desync=fakedsplit:pos=midsld:tcp_md5
+--payload=tls_client_hello --lua-desync=hostfakesplit:tcp_md5
+--payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:badsum:repeats=6 --lua-desync=multidisorder:pos=midsld
+EOF
+}
+
+case "${1:-}" in
+	start)
+		shift
+		make_list
+		do_start "$@"
+		;;
+	stop)
+		do_stop
+		;;
+	status)
+		do_status
+		;;
+	log)
+		cat "$RUNLOG" 2>/dev/null
+		;;
+	clearlog)
+		: > "$RUNLOG" 2>/dev/null
+		echo "cleared"
+		;;
+	_run)
+		shift
+		do_run "$@"
+		;;
+	*)
+		echo "TSPU test - определение класса ТСПУ провайдера (ядро tspu-class-test v2.2)"
+		echo "Использование: tspu-test start [ДОМЕН(Ы)] [ПОВТОРОВ] [ОЖИДАНИЕ_С] | stop | status | log | clearlog"
+		exit 1
+		;;
+esac

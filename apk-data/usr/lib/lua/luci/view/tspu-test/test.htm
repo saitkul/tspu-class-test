@@ -1,0 +1,336 @@
+<%#
+ luci-app-tspu-test: страница «TSPU test» (серверный шаблон).
+ Интерфейс повторяет вкладку Blockcheck2: форма, кнопки, статус, вывод.
+ Логика - обычный JS + XHR на эндпоинты контроллера.
+%>
+<%+header%>
+
+<style type="text/css">
+	.tspu-verdict-undef { color: #d32f2f; }
+	.tspu-verdict-l0 { color: #2e7d32; }
+	.tspu-verdict-l2 { color: #ef6c00; }
+	.tspu-verdict-special { color: #1565c0; }
+	#tspu_verdict .cbi-value-field { white-space: pre-line; }
+	#tspu_attempts .att-ok { color: #2e7d32; }
+	#tspu_attempts .att-part { color: #ef6c00; font-weight: bold; }
+	#tspu_attempts .att-zero { color: #999; }
+</style>
+
+<div class="cbi-map" id="tspu_test_map">
+	<h2><a id="content" name="content">TSPU test — класс ТСПУ провайдера</a></h2>
+	<div class="cbi-map-descr">
+		<p>Определяет, какие механики десинхронизации пропускает ТСПУ вашего провайдера: 16 стратегий (нарезка / голый фейк / комбинации) на TLS 1.2 и TLS 1.3 в режиме SCANLEVEL=force. По результатам печатается вердикт «КЛАСС ТСПУ».</p>
+		<p>На время теста служба Zapret2 останавливается и запускается обратно по завершении. Финальную проверку стратегии всегда делайте в браузере в режиме Инкогнито.</p>
+	</div>
+
+	<div class="cbi-section">
+		<div class="cbi-value">
+			<label class="cbi-value-title" for="tspu_domain">Домен для теста (без https://; за один прогон — один домен)</label>
+			<div class="cbi-value-field">
+				<input id="tspu_domain" type="text" class="cbi-input-text" style="width:100%; max-width:420px" value="www.youtube.com" />
+				<details style="margin-top:.3em; color:#999">
+					<summary style="cursor:pointer">Видеотормоза/затыки при пройденном тесте? Проверьте узел googlevideo (отдельный прогон)</summary>
+					<ol style="margin:.4em 0 .2em 1.2em; padding:0">
+						<li>Откройте любое видео YouTube на устройстве за этим роутером.</li>
+						<li>Нажмите F12 → вкладка Network, в фильтр введите: <b>googlevideo</b></li>
+						<li>Наведите курсор на любой запрос <b>videoplayback…</b> — во всплывающей подсказке увидите URL вида https://rr1---sn-xxxx.googlevideo.com/videoplayback</li>
+						<li>Скопируйте первую часть URL до /videoplayback — это узел, например <b>rr1---sn-xxxx.googlevideo.com</b></li>
+						<li><b>Запустите отдельный прогон, вписав в поле только этот узел</b> (blockcheck2 принимает один домен за прогон). Если узел сменится в DevTools (rr2, rr5…) — повторите с новым.</li>
+					</ol>
+					<p style="margin:.2em 0">Видеопоток идёт с отдельных узлов googlevideo.com — их ТСПУ может фильтровать жёстче, чем сайт: в DevTools такие обрывы видны как videoplayback … ERR_CONNECTION_ABORTED.</p>
+				</details>
+			</div>
+		</div>
+		<div class="cbi-value">
+			<label class="cbi-value-title" for="tspu_repeats">Повторы каждой стратегии</label>
+			<div class="cbi-value-field">
+				<select id="tspu_repeats" class="cbi-input-select" style="width:auto">
+					<option value="1">1</option>
+					<option value="2">2</option>
+					<option value="3" selected="selected">3</option>
+					<option value="4">4</option>
+					<option value="5">5</option>
+				</select>
+			</div>
+		</div>
+		<div class="cbi-value">
+			<label class="cbi-value-title" for="tspu_wait">Ожидание ответа</label>
+			<div class="cbi-value-field">
+				<select id="tspu_wait" class="cbi-input-select" style="width:auto">
+					<option value="2.5" selected="selected">2.5 с (по умолчанию)</option>
+					<option value="5">5 с</option>
+					<option value="8">8 с</option>
+					<option value="15">15 с</option>
+				</select>
+			</div>
+		</div>
+		<div class="cbi-value">
+			<label class="cbi-value-title">Управление</label>
+			<div class="cbi-value-field">
+				<button id="tspu_btn_start" class="btn cbi-button cbi-button-apply" onclick="tspuStart()">Запустить тест</button>
+				<button id="tspu_btn_stop" class="btn cbi-button cbi-button-negative" disabled="disabled" onclick="tspuStop()">Остановить</button>
+				<button id="tspu_btn_clear" class="btn cbi-button cbi-button-neutral" onclick="tspuClear()">Очистить лог</button>
+				<button id="tspu_btn_copy" class="btn cbi-button cbi-button-neutral" onclick="tspuCopy()">Скопировать отчёт</button>
+				<span style="margin-left:1em"><span style="color:#888">Статус: </span><span id="tspu_status" style="font-weight:bold">Готово</span></span>
+			</div>
+		</div>
+		<div class="cbi-value" id="tspu_verdict" style="display:none">
+			<label class="cbi-value-title">Вердикт</label>
+			<div class="cbi-value-field">
+				<span id="tspu_verdict_text" style="font-weight:bold; white-space:pre-line"></span>
+			</div>
+		</div>
+		<div class="cbi-value" id="tspu_attempts_wrap" style="display:none">
+			<label class="cbi-value-title">Попытки</label>
+			<div class="cbi-value-field">
+				<div id="tspu_attempts" style="font-family:monospace; white-space:pre-wrap"></div>
+			</div>
+		</div>
+		<div class="cbi-value">
+			<label class="cbi-value-title" for="tspu_autoscroll">Вывод теста</label>
+			<div class="cbi-value-field">
+				<label style="display:inline-flex; align-items:center; gap:.4em">
+					<input id="tspu_autoscroll" type="checkbox" checked="checked" /> Авторпрокрутка
+				</label>
+				<label style="display:inline-flex; align-items:center; gap:.4em; margin-left:1.5em" title="Если вердикт «не определён (нестабильно/медленно)» — автоматически повторить тест с ожиданием 8 с и повторами 3">
+					<input id="tspu_autoretest" type="checkbox" checked="checked" /> Авто-повтор при «не определён» (8 с / повторы 3)
+				</label>
+			</div>
+		</div>
+		<div style="margin-top:.4em">
+			<textarea id="tspu_log" readonly="readonly" wrap="off" style="width:100%; height:420px; font-family:monospace; white-space:pre; padding:.5em"></textarea>
+		</div>
+		<div class="cbi-value" id="tspu_dl_block" style="margin-top:.4em">
+			<label class="cbi-value-title">Файлы логов</label>
+			<div class="cbi-value-field">
+				<a id="tspu_dl_short" class="btn cbi-button cbi-button-neutral" target="_blank" rel="noopener" href="#">Скачать краткий лог (для issue)</a>
+				<a id="tspu_dl_full" class="btn cbi-button cbi-button-neutral" target="_blank" rel="noopener" href="#">Скачать полный лог</a>
+				<span style="color:#888; margin-left:.6em">/tmp/class_test.log.short и /tmp/class_test.log — создаются при запуске теста, очищаются при перезагрузке роутера</span>
+			</div>
+		</div>
+		<div class="cbi-value" style="margin-top:.6em; color:#888">
+			<span>Полные логи на роутере: /tmp/class_test.log (сырой), /tmp/class_test.log.short (краткий, для issue). Скрипт: /usr/bin/tspu-test.
+			Проект: <a href="https://github.com/saitkul/tspu-class-test/" target="_blank" rel="noopener">github.com/saitkul/tspu-class-test</a></span>
+		</div>
+	</div>
+</div>
+
+<script type="text/javascript">
+//<![CDATA[
+(function () {
+	var U_STATUS = '<%=luci.dispatcher.build_url("admin/services/tspu-test/status")%>';
+	var U_START  = '<%=luci.dispatcher.build_url("admin/services/tspu-test/start")%>';
+	var U_STOP   = '<%=luci.dispatcher.build_url("admin/services/tspu-test/stop")%>';
+	var U_CLEAR  = '<%=luci.dispatcher.build_url("admin/services/tspu-test/clearlog")%>';
+	var U_LOG    = '<%=luci.dispatcher.build_url("admin/services/tspu-test/log")%>';
+	var U_DL     = '<%=luci.dispatcher.build_url("admin/services/tspu-test/download")%>';
+
+	var elDomain = document.getElementById('tspu_domain');
+	var elRep = document.getElementById('tspu_repeats');
+	var elWait = document.getElementById('tspu_wait');
+	var elStart = document.getElementById('tspu_btn_start');
+	var elStop = document.getElementById('tspu_btn_stop');
+	var elStatus = document.getElementById('tspu_status');
+	var elAuto = document.getElementById('tspu_autoscroll');
+	var elLog = document.getElementById('tspu_log');
+	var elDlBlock = document.getElementById('tspu_dl_block');
+	var elDlShort = document.getElementById('tspu_dl_short');
+	var elDlFull = document.getElementById('tspu_dl_full');
+	var elVerdict = document.getElementById('tspu_verdict');
+	var elVerdictText = document.getElementById('tspu_verdict_text');
+	var elAttemptsWrap = document.getElementById('tspu_attempts_wrap');
+	var elAttempts = document.getElementById('tspu_attempts');
+	var elRetest = document.getElementById('tspu_autoretest');
+	var retestUsed = false;
+	var undefinedSeen = false;
+	var lastLog = null;
+
+	elDlShort.href = U_DL + '?which=short';
+	elDlFull.href = U_DL + '?which=full';
+
+	function fmtElapsed(sec) {
+		sec = parseInt(sec, 10) || 0;
+		var m = Math.floor(sec / 60);
+		var s = sec % 60;
+		return m + ':' + (s < 10 ? '0' : '') + s;
+	}
+
+	function parseStatus(text) {
+		var o = { state: 'none', alive: '0', progress: '', elapsed: '', msg: '', haslog: '0' };
+		text.split('\n').forEach(function (line) {
+			var m = line.match(/^([a-z_]+)=(.*)$/);
+			if (m) o[m[1]] = m[2];
+		});
+		if (o.alive != '1' && (o.state == 'running' || o.state == 'starting'))
+			o.state = 'done';
+		return o;
+	}
+
+	function setRunning(r) {
+		elStart.disabled = r;
+		elStop.disabled = !r;
+		elDomain.disabled = r;
+		elRep.disabled = r;
+		elWait.disabled = r;
+	}
+
+	function applyStatus(text) {
+		var st = parseStatus(text);
+		var running = (st.state == 'running' || st.state == 'starting' || st.state == 'started');
+		setRunning(running);
+
+		var txt = 'Готово';
+		if (st.state == 'running' || st.state == 'starting' || st.state == 'started') {
+			txt = 'Идёт тест';
+			if (st.progress) txt += ': ' + st.progress.replace('/', ' из ');
+			if (st.elapsed) txt += ', прошло ' + fmtElapsed(st.elapsed);
+		} else if (st.state == 'stopped') {
+			txt = 'Остановлено';
+		} else if (st.state == 'error') {
+			txt = 'Ошибка: ' + (st.msg || 'см. вывод теста');
+		}
+		elStatus.textContent = txt;
+
+		/* Авто-повтор: тест завершён, вердикт «не определён (нестабильно/медленно)»,
+		   галочка включена, повтор ещё не делался — один повторный прогон
+		   с ожиданием 8 с и повторами 5 */
+		if (st.state == 'done' && elRetest.checked && !retestUsed && undefinedSeen) {
+			retestUsed = true;
+			elStatus.textContent = 'Вердикт «не определён» — запускаю авто-повтор (ожидание 8 с, повторы 5)...';
+			setTimeout(function () { tspuAutoRetest(); }, 1200);
+		}
+	}
+
+	function xhr(url, cb) {
+		try {
+			var x = new XMLHttpRequest();
+			x.open('GET', url, true);
+			x.onreadystatechange = function () {
+				if (x.readyState === 4 && x.status === 200 && cb) cb(x.responseText);
+			};
+			x.send(null);
+		} catch (e) { }
+	}
+
+	function applyLog(text) {
+		var clean = (text || '').replace(/\r/g, '');
+		if (clean == lastLog) return;
+		lastLog = clean;
+		/* Вердикт и попытки печатаются дважды (в ИТОГ-блоке и повторно в отчёте) -
+		   берём только часть лога до отчёта, чтобы не дублировать */
+		var cut = clean.indexOf('=== ОТЧЁТ ДЛЯ issue #1');
+		var scope = (cut >= 0) ? clean.substring(0, cut) : clean;
+		var lines = scope.split('\n');
+		var shown = lines;
+		if (lines.length > 480) shown = lines.slice(-480);
+		var stick = elAuto.checked;
+		var atBottom = (elLog.scrollTop + elLog.clientHeight >= elLog.scrollHeight - 6);
+		elLog.value = shown.join('\n');
+		if (stick || atBottom) elLog.scrollTop = elLog.scrollHeight;
+
+		/* Вердикт: вытащить строки «КЛАСС ТСПУ …» и подсветить классом */
+		var vd = [];
+		var att = [];
+		for (var i = 0; i < lines.length; i++) {
+			if (lines[i].indexOf('КЛАСС ТСПУ') === 0) vd.push(lines[i]);
+			if (lines[i].indexOf('Попытки TLS') === 0) att.push(lines[i]);
+		}
+		undefinedSeen = (scope.indexOf('не определён (нестабильно/медленно)') >= 0);
+
+		if (vd.length) {
+			var cls = 'undef';
+			var v = vd.join(' ');
+			if (v.indexOf('L0') >= 0) cls = 'l0';
+			else if (v.indexOf('L2') >= 0) cls = 'l2';
+			else if (v.indexOf('особый') >= 0) cls = 'special';
+			elVerdictText.textContent = vd.join('\n');
+			elVerdict.className = 'tspu-verdict tspu-verdict-' + cls;
+			elVerdict.style.display = '';
+		} else {
+			elVerdict.style.display = 'none';
+		}
+
+		/* Таблица попыток с подсветкой: полный успех - зелёный,
+		   нестабильные (1-2 из N) - оранжевый, ноль - приглушённый */
+		if (att.length) {
+			var html = '';
+			for (var j = 0; j < att.length; j++) {
+				var colored = att[j]
+					.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+					.replace(/(\d+):(\d+)\/(\d+)/g, function (m0, k, ok, tot) {
+						var c = 'att-zero';
+						ok = parseInt(ok, 10); tot = parseInt(tot, 10);
+						if (ok === tot) c = 'att-ok';
+						else if (ok > 0) c = 'att-part';
+						return '<span class="' + c + '">' + m0 + '</span>';
+					});
+				html += '<div>' + colored + '</div>';
+			}
+			elAttempts.innerHTML = html;
+			elAttemptsWrap.style.display = '';
+		} else {
+			elAttemptsWrap.style.display = 'none';
+		}
+	}
+
+	function update() {
+		xhr(U_STATUS, function (t) { applyStatus(t); });
+		xhr(U_LOG, function (t) { applyLog(t); });
+	}
+
+	window.tspuStart = function () {
+		retestUsed = false;
+		undefinedSeen = false;
+		var url = U_START + '?domain=' + encodeURIComponent(elDomain.value || 'www.youtube.com') +
+			'&repeats=' + encodeURIComponent(elRep.value) +
+			'&wait=' + encodeURIComponent(elWait.value);
+		setRunning(true);
+		xhr(url, function () { update(); });
+	};
+
+	window.tspuAutoRetest = function () {
+		var url = U_START + '?domain=' + encodeURIComponent(elDomain.value || 'www.youtube.com') +
+			'&repeats=3&wait=8';
+		setRunning(true);
+		xhr(url, function () { update(); });
+	};
+
+	window.tspuStop = function () {
+		xhr(U_STOP, function () { update(); });
+	};
+
+	window.tspuClear = function () {
+		lastLog = null;
+		elLog.value = '';
+		xhr(U_CLEAR, null);
+	};
+
+	window.tspuCopy = function () {
+		var t = elLog.value;
+		var s = t.indexOf('=== ОТЧЁТ ДЛЯ issue #1');
+		var e = t.indexOf('=== конец отчёта ===');
+		if (s < 0 || e < 0) {
+			elStatus.textContent = 'Отчёт ещё не сформирован';
+			return;
+		}
+		var block = t.substring(s, e + '=== конец отчёта ==='.length);
+		var tmp = document.createElement('textarea');
+		tmp.value = block;
+		tmp.style.position = 'fixed';
+		tmp.style.left = '-9999px';
+		document.body.appendChild(tmp);
+		tmp.select();
+		var done = false;
+		try { done = document.execCommand('copy'); } catch (err) { done = false; }
+		document.body.removeChild(tmp);
+		elStatus.textContent = done ? 'Отчёт скопирован в буфер обмена' : 'Не удалось скопировать - выделите текст вручную';
+		if (done) setTimeout(function () { update(); }, 1500);
+	};
+
+	setInterval(update, 3000);
+	update();
+})();
+//]]>
+</script>
+
+<%+footer%>

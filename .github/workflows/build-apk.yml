@@ -1,0 +1,76 @@
+name: build-apk
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install apk-tools 3 static (Alpine edge)
+        run: |
+          APKV=$(wget -qO- https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/ | grep -o 'apk-tools-static-3[^"]*\.apk' | head -1)
+          echo "apk-tools package: $APKV"
+          wget -q "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/$APKV"
+          tar -xzf "$APKV" sbin/apk.static
+          ./sbin/apk.static --version
+
+      - name: Normalize package files
+        run: |
+          # CRLF -> LF (ash ломается на «EOF\r»), права: каталоги 755, файлы 644, CLI 755
+          find apk-data -type f -exec sed -i 's/\r$//' {} +
+          find apk-data -type d -exec chmod 755 {} +
+          find apk-data -type f -exec chmod 644 {} +
+          chmod 755 apk-data/usr/bin/tspu-test
+
+      - name: Create package scripts
+        run: |
+          mkdir -p apk-scripts
+          cat > apk-scripts/post-install <<'EOF'
+          #!/bin/sh
+          [ -n "${IPKG_INSTROOT}" ] && exit 0
+          rm -f /tmp/luci-indexcache* 2>/dev/null
+          rm -rf /tmp/luci-modulecache/ 2>/dev/null
+          /etc/init.d/rpcd reload 2>/dev/null
+          exit 0
+          EOF
+          cp apk-scripts/post-install apk-scripts/post-upgrade
+          cat > apk-scripts/pre-deinstall <<'EOF'
+          #!/bin/sh
+          [ -x /usr/bin/tspu-test ] && /usr/bin/tspu-test stop >/dev/null 2>&1
+          exit 0
+          EOF
+          cat > apk-scripts/post-deinstall <<'EOF'
+          #!/bin/sh
+          rm -f /tmp/tspu_test.pid /tmp/tspu_test.status /tmp/tspu_test_run.log
+          rm -f /tmp/class_test.log /tmp/class_test.log.short
+          rm -f /tmp/class_report.awk /tmp/class_report.txt /tmp/list_stage1.txt /tmp/class_runner.sh
+          exit 0
+          EOF
+          chmod 755 apk-scripts/*
+
+      - name: Build apk (apk mkpkg)
+        run: |
+          # Владелец файлов в пакете должен быть root:root
+          sudo chown -R 0:0 apk-data apk-scripts
+          ./sbin/apk.static mkpkg \
+            --info "name:luci-app-tspu-test" \
+            --info "version:1.1.2-r1" \
+            --info "arch:noarch" \
+            --info "description:TSPU test - определение класса ТСПУ провайдера для Zapret2 (16 стратегий, SCANLEVEL=force, вердикт КЛАСС ТСПУ). Ядро tspu-class-test v2.2." \
+            --info "license:MIT" \
+            --info "depends:libc luci-base curl luci-lua-runtime" \
+            --script "post-install:apk-scripts/post-install" \
+            --script "post-upgrade:apk-scripts/post-upgrade" \
+            --script "pre-deinstall:apk-scripts/pre-deinstall" \
+            --script "post-deinstall:apk-scripts/post-deinstall" \
+            --output luci-app-tspu-test-1.1.2-r1.apk \
+            --files apk-data
+          ls -la luci-app-tspu-test-1.1.2-r1.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: luci-app-tspu-test-1.1.2-r1.apk
+          path: luci-app-tspu-test-1.1.2-r1.apk

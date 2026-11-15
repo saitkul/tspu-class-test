@@ -72,9 +72,10 @@ do_stop() {
 	kill $(pgrep -f '[t]spu-test _run') 2>/dev/null
 	# Обёртка blockcheck2 на случай, если trap раннера не успел её убить
 	kill $(pgrep -f '[b]lockcheck2.sh') 2>/dev/null
-	# Дать trap-у время вернуть Zapret2; не умер - добить принудительно
+	# Дать trap-у время вернуть Zapret2 (раннер завершается за 5-6 с: останавливает
+	# blockcheck2 и запускает zapret2); не умер - добить принудительно
 	i=0
-	while [ $i -lt 3 ] && pid_alive; do sleep 1; i=$((i+1)); done
+	while [ $i -lt 12 ] && pid_alive; do sleep 1; i=$((i+1)); done
 	if pid_alive; then
 		kill -9 "$(cat "$PIDF" 2>/dev/null)" 2>/dev/null
 		kill -9 $(pgrep -f '[t]spu-test _run') 2>/dev/null

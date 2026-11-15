@@ -59,7 +59,7 @@ jobs:
           sudo chown -R 0:0 apk-data apk-scripts
           ./sbin/apk.static mkpkg \
             --info "name:luci-app-tspu-test" \
-            --info "version:1.2.0-r1" \
+            --info "version:1.2.0-r8" \
             --info "arch:noarch" \
             --info "description:TSPU test - определение класса ТСПУ провайдера для Zapret2 (17 стратегий, SCANLEVEL=force, вердикт КЛАСС ТСПУ и рекомендация). Ядро tspu-class-test v2.4." \
             --info "license:MIT" \
@@ -68,9 +68,9 @@ jobs:
             --script "post-upgrade:apk-scripts/post-upgrade" \
             --script "pre-deinstall:apk-scripts/pre-deinstall" \
             --script "post-deinstall:apk-scripts/post-deinstall" \
-          --output luci-app-tspu-test-1.2.0-r1.apk \
+          --output luci-app-tspu-test-1.2.0-r8.apk \
           --files apk-data
-          ls -la luci-app-tspu-test-1.2.0-r1.apk
+          ls -la luci-app-tspu-test-1.2.0-r8.apk
 
       - name: Verify package installs into clean root
         run: |
@@ -79,7 +79,7 @@ jobs:
           # depends - содержимое (data) идентично публикуемому пакету.
           ./sbin/apk.static mkpkg \
             --info "name:luci-app-tspu-test" \
-            --info "version:1.2.0-r1" \
+            --info "version:1.2.0-r8" \
             --info "arch:noarch" \
             --info "license:MIT" \
             --output /tmp/verify-nodeps.apk \
@@ -107,5 +107,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: luci-app-tspu-test-1.2.0-r1.apk
-          path: luci-app-tspu-test-1.2.0-r1.apk
+          name: luci-app-tspu-test-1.2.0-r8.apk
+          path: luci-app-tspu-test-1.2.0-r8.apk

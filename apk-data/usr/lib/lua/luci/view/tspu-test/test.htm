@@ -16,18 +16,40 @@
 	#tspu_attempts .att-ok { color: #2e7d32; }
 	#tspu_attempts .att-part { color: #ef6c00; font-weight: bold; }
 	#tspu_attempts .att-zero { color: #999; }
+	/* Заголовок в стиле Zapret2/ZeroBlock: белый жирный титул + строка-подзаголовок */
+	h2.tspu-h1 { color: #ffffff !important; font-weight: bold; margin-bottom: 0; }
+	h2.tspu-h1 a { color: #ffffff !important; }
+	.tspu-subtitle { color: #e6e6e6; margin: 0 0 8px; font-size: 14px; }
+	/* Вкладки в стиле ZeroBlock: серый фон-чип у каждой, активная — жёлтый текст */
+	#tspu_tabs { margin-bottom: .8em; }
+	#tspu_tabs button {
+		background: #2a2d33; border: none; border-radius: 3px;
+		color: #b7bcc4; padding: 5px 14px; font-size: 14px; cursor: pointer; outline: none;
+		margin-right: 4px;
+	}
+	#tspu_tabs button.tspu-active { color: #f0c53d; font-weight: bold; }
+	.tspu-note-italic { font-style: italic; }
+	/* Кнопка запуска в стиле Zapret2: зелёная */
+	#tspu_btn_start { background: #2e7d32; color: #fff; border: 1px solid #2e7d32; }
+	#tspu_btn_start:disabled { opacity: .5; }
 </style>
 
 <div class="cbi-map" id="tspu_test_map">
-	<h2><a id="content" name="content">TSPU test — класс ТСПУ провайдера<span id="tspu_title_ver"></span></a></h2>
+	<h2 class="tspu-h1">TSPU test</h2>
+	<div class="tspu-subtitle">Класс-тест ТСПУ провайдера<span id="tspu_title_ver"></span></div>
 	<div class="cbi-map-descr">
-		<p>Определяет, какие механики десинхронизации пропускает ТСПУ вашего провайдера: 17 стратегий (нарезка / голый фейк / комбинации / двухпакетный hello) на TLS 1.2 и TLS 1.3 в режиме SCANLEVEL=force. По результатам печатается вердикт «КЛАСС ТСПУ» и рекомендация — с какой готовой строки начать.</p>
-		<p>На время теста служба Zapret2 останавливается и запускается обратно по завершении. Финальную проверку стратегии всегда делайте в браузере в режиме Инкогнито.</p>
+		<p>Определяет, какие механики десинхронизации пропускает ТСПУ вашего провайдера: 17 стратегий (нарезка / голый фейк / комбинации / двухпакетный hello) на TLS 1.2 и TLS 1.3 в режиме SCANLEVEL=force. Вкладка «Тест» печатает вердикт «КЛАСС ТСПУ» и рекомендацию; вкладка «Генератор стратегий» превращает отчёт в готовые строки для профиля Zapret2.</p>
+		<p class="tspu-note-italic">На время теста служба Zapret2 останавливается и запускается обратно по завершении. Финальную проверку стратегии всегда делайте в браузере в режиме Инкогнито.</p>
 	</div>
 
 	<div class="cbi-section">
+		<div id="tspu_tabs" style="margin-bottom:.6em">
+			<button id="tspu_tab_btn_test" type="button" onclick="tspuTab('test')">Тест</button>
+			<button id="tspu_tab_btn_gen" type="button" onclick="tspuTab('gen')">Генератор стратегий</button>
+		</div>
+		<div id="tspu_tab_test">
 		<div class="cbi-value">
-			<label class="cbi-value-title" for="tspu_domain">Домен для теста (без https://; за один прогон — один домен)</label>
+			<label class="cbi-value-title" for="tspu_domain">Домен для теста (за один прогон — один домен)</label>
 			<div class="cbi-value-field">
 				<input id="tspu_domain" type="text" class="cbi-input-text" style="width:100%; max-width:420px" value="www.youtube.com" />
 				<details style="margin-top:.3em; color:#999">
@@ -69,7 +91,7 @@
 		<div class="cbi-value">
 			<label class="cbi-value-title">Управление</label>
 			<div class="cbi-value-field">
-				<button id="tspu_btn_start" class="btn cbi-button cbi-button-apply" onclick="tspuStart()">Запустить тест</button>
+				<button id="tspu_btn_start" class="btn cbi-button" onclick="tspuStart()">Запустить тест</button>
 				<button id="tspu_btn_clear" class="btn cbi-button cbi-button-neutral" onclick="tspuClear()">Очистить лог</button>
 				<button id="tspu_btn_copy" class="btn cbi-button cbi-button-neutral" onclick="tspuCopy()">Скопировать отчёт</button>
 				<button id="tspu_btn_prompt" class="btn cbi-button cbi-button-neutral" onclick="tspuPrompt()">Промт для нейросети</button>
@@ -126,25 +148,31 @@
 			<div class="cbi-value-field">
 				<a id="tspu_dl_short" class="btn cbi-button cbi-button-neutral" target="_blank" rel="noopener" href="#">Скачать краткий лог (для issue)</a>
 				<a id="tspu_dl_full" class="btn cbi-button cbi-button-neutral" target="_blank" rel="noopener" href="#">Скачать полный лог</a>
-				<span style="color:#888; margin-left:.6em">/tmp/class_test.log.short и /tmp/class_test.log — создаются при запуске теста, очищаются при перезагрузке роутера</span>
 			</div>
 		</div>
-				<div class="cbi-value" style="margin-top:1em">
-			<label class="cbi-value-title">QUIC-тест (UDP 443)</label>
-			<div class="cbi-value-field">
-				<p style="margin:0 0 .4em">Отдельный QUIC-класс ТСПУ: тест и h3-curl ставятся автоматически на страницу запуска (без терминала), корпус blockcheck2 (10–20 минут), вердикт «КЛАСС ТСПУ (QUIC)» с готовым профилем. На время теста Zapret2 останавливается и возвращается по завершении. Видео тестируйте по узлу rr1---sn-….googlevideo.com (F12 → Network → videoplayback); корневой googlevideo.com закрывают наглухо.</p>
-				<input id="tspu_quic_domain" type="text" class="cbi-input-text" style="width:100%; max-width:420px" value="www.youtube.com" />
-				<button id="tspu_quic_start" class="btn cbi-button cbi-button-apply" onclick="tspuQuicStart()">Установить и запустить</button>
-				<button id="tspu_quic_stop" class="btn cbi-button cbi-button-negative" disabled="disabled" onclick="tspuQuicStop()">Остановить</button>
-				<div id="tspu_quic_status" style="color:#888; margin-top:.3em">QUIC: не запускался</div>
-				<div id="tspu_quic_logwrap" style="display:none; margin-top:.4em">
-					<textarea id="tspu_quic_log" readonly="readonly" wrap="off" style="width:100%; height:180px; font-family:monospace; white-space:pre; padding:.5em"></textarea>
+		</div><!-- /tspu_tab_test -->
+		<div id="tspu_tab_gen" style="display:none">
+			<div class="cbi-value">
+				<label class="cbi-value-title" for="tspu_gen_input">Отчёт для генерации (ИТОГ/ОТЧЁТ от TSPU test, «Рабочие стратегии» от blockcheckw или его *_check.json)</label>
+				<div class="cbi-value-field">
+					<textarea id="tspu_gen_input" wrap="off" style="width:100%; height:200px; font-family:monospace; white-space:pre; padding:.5em" placeholder="Вставьте сюда отчёт — или нажмите «Вставить отчёт последнего теста»"></textarea>
+					<button class="btn cbi-button cbi-button-neutral" onclick="tspuGenFetch()">Вставить отчёт последнего теста</button>
+					<button class="btn cbi-button cbi-button-apply" onclick="tspuGenerate()">Сгенерировать стратегии</button>
+					<button class="btn cbi-button cbi-button-neutral" onclick="tspuGenClear()">Очистить</button>
+					<div id="tspu_gen_status" style="margin-top:.3em; font-size:.92em; color:#888"></div>
 				</div>
-				<p style="margin:.4em 0 0; color:#888">Если кнопка молчит в вашем браузере — <a href="<%=luci.dispatcher.build_url("admin/services/tspu-test/quicpage")%>">страница QUIC-теста без JavaScript</a> (форма + автообновление статуса).</p>
+			</div>
+			<div class="cbi-value" id="tspu_gen_out_wrap" style="display:none">
+				<label class="cbi-value-title">Готовые стратегии для Zapret2</label>
+				<div class="cbi-value-field">
+					<textarea id="tspu_gen_out" readonly="readonly" wrap="off" style="width:100%; height:340px; font-family:monospace; white-space:pre; padding:.5em"></textarea>
+					<button class="btn cbi-button cbi-button-neutral" onclick="tspuGenCopy()">Скопировать результат</button>
+					<p style="color:#888; margin:.4em 0 0; font-size:.92em">Секция <b>config strategy</b> — для /etc/config/zapret2 (терминал) или копирования строк в профиль. Строка script — то же самое в редакторе стратегий LuCI Zapret2. После применения перезапустите Zapret2 и проверьте в браузере (Инкогнито).</p>
+				</div>
 			</div>
 		</div>
 <div class="cbi-value" style="margin-top:.6em; color:#888">
-			<span>Полные логи на роутере: /tmp/class_test.log (сырой), /tmp/class_test.log.short (краткий, для issue). Скрипт: /usr/bin/tspu-test.
+			<span>Полные логи на роутере: /tmp/class_test.log (сырой), /tmp/class_test.log.short (краткий, для issue) — создаются при запуске теста, очищаются при перезагрузке роутера. Скрипт: /usr/bin/tspu-test.
 			Проект: <a href="https://github.com/saitkul/tspu-class-test/" target="_blank" rel="noopener">github.com/saitkul/tspu-class-test</a></span>
 		</div>
 	</div>
@@ -158,9 +186,6 @@
 	var U_CLEAR  = '<%=luci.dispatcher.build_url("admin/services/tspu-test/clearlog")%>';
 	var U_LOG    = '<%=luci.dispatcher.build_url("admin/services/tspu-test/log")%>';
 	var U_DL     = '<%=luci.dispatcher.build_url("admin/services/tspu-test/download")%>';
-	var U_QSTART  = '<%=luci.dispatcher.build_url("admin/services/tspu-test/quicstart")%>';
-	var U_QSTOP   = '<%=luci.dispatcher.build_url("admin/services/tspu-test/quicstop")%>';
-	var U_QSTATUS = '<%=luci.dispatcher.build_url("admin/services/tspu-test/quicstatus")%>';
 
 	var elDomain = document.getElementById('tspu_domain');
 	var elRep = document.getElementById('tspu_repeats');
@@ -184,15 +209,11 @@
 	var elAttemptsWrap = document.getElementById('tspu_attempts_wrap');
 	var elAttempts = document.getElementById('tspu_attempts');
 	var lastLog = null;
-	/* QUIC-тест */
-	var elQDomain = document.getElementById('tspu_quic_domain');
-	var elQStart = document.getElementById('tspu_quic_start');
-	var elQStop = document.getElementById('tspu_quic_stop');
-	var elQStatus = document.getElementById('tspu_quic_status');
-	var elQLog = document.getElementById('tspu_quic_log');
-	var elQLogWrap = document.getElementById('tspu_quic_logwrap');
-	var lastLog = null;
-	/* QUIC-тест */
+	/* Генератор стратегий (вкладка 2) */
+	var elGenInput = document.getElementById('tspu_gen_input');
+	var elGenOut = document.getElementById('tspu_gen_out');
+	var elGenOutWrap = document.getElementById('tspu_gen_out_wrap');
+	var elGenStatus = document.getElementById('tspu_gen_status');
 
 	elDlShort.href = U_DL + '?which=short';
 	elDlFull.href = U_DL + '?which=full';
@@ -248,22 +269,46 @@
 		}
 	}
 
-	function xhr(url, cb) {
+	function xhr(url, cb, errCb) {
 		try {
 			var x = new XMLHttpRequest();
 			/* cache-buster: без него браузер может отдать кэшированный ответ */
 			x.open('GET', url + (url.indexOf('?') >= 0 ? '&' : '?') + '_=' + Date.now(), true);
 			x.onreadystatechange = function () {
-				if (x.readyState === 4 && x.status === 200 && cb) cb(x.responseText);
+				if (x.readyState === 4) {
+					if (x.status === 200 && cb) cb(x.responseText);
+					else if (errCb) errCb(x.status);
+				}
 			};
 			x.send(null);
 		} catch (e) { }
+	}
+
+	/* Очистка домена: scheme/userinfo/путь/порт/лишние точки убираются,
+	   остаётся только поддерживаемый формат (буквы, цифры, точки, дефис) */
+	function tspuCleanDomain(v) {
+		var out = [];
+		(v || '').split(/[\s,;]+/).forEach(function (part) {
+			var d = part.trim().toLowerCase();
+			if (!d) return;
+			d = d.replace(/^[a-z][a-z0-9+.\-]*:[\/]{2}/, '');
+			d = d.replace(/^[^\/@]+@/, '');
+			d = d.split(/[\/?#]/)[0];
+			d = d.replace(/:\d+$/, '');
+			d = d.replace(/\.+$/, '');
+			if (d && /^[a-z0-9.\-]+$/.test(d)) out.push(d);
+		});
+		return out;
 	}
 
 	function applyLog(text) {
 		var clean = (text || '').replace(/\r/g, '');
 		if (clean == lastLog) return;
 		lastLog = clean;
+		/* Как только в логе что-то появилось — статус «Запускаю тест...» больше не нужен */
+		if (clean.length > 0 && elStatus.textContent.indexOf('Запускаю тест') === 0) {
+			elStatus.textContent = '';
+		}
 		/* Кнопки управляются по ЛОГУ, а не по статусному опросу: лог доходит
 		   всегда, а status-эндпоинт на части прошивок ненадёжен.
 		   «=== конец отчёта ===» или «=== ТЕСТ ОСТАНОВЛЕН ===» в логе → тест
@@ -352,20 +397,52 @@
 	}
 
 	window.tspuStart = function () {
-		var url = U_START + '?domain=' + encodeURIComponent(elDomain.value || 'www.youtube.com') +
+		/* Очистка домена: https://, пути, порты и прочий хвост убираются.
+		   За один прогон — один домен: берём первый. */
+		var doms = tspuCleanDomain(elDomain.value);
+		if (!doms.length) {
+			elStatus.textContent = 'Введите домен, например www.youtube.com';
+			return;
+		}
+		if (doms.length > 1) {
+			elStatus.textContent = 'За один прогон — один домен: взят ' + doms[0];
+		}
+		elDomain.value = doms[0];
+		var url = U_START + '?domain=' + encodeURIComponent(elDomain.value) +
 			'&repeats=' + encodeURIComponent(elRep.value) +
 			'&wait=' + encodeURIComponent(elWait.value);
 		/* Кнопки гаснут сразу по клику; дальше их держит лог (applyLog).
-		   Если запуск не состоялся (state=error в ответе start) —
-		   разблокируем сразу и покажем причину. */
+		   Любой сбой запуска теперь ВИДЕН: ошибка CLI, пустой или
+		   неожиданный ответ, недоступность роутера. */
 		setRunning(true);
+		elStatus.textContent = 'Запускаю тест...';
+		/* Сторож: если через 25 с лог пуст — тест не отвечает на этой линии;
+		   показываем точную терминальную диагностику */
+		var watchdog = setTimeout(function () {
+			if ((elLog.value || '').length === 0) {
+				setRunning(false);
+				elStatus.innerHTML = 'Тест не отвечает. Выполните в терминале роутера и пришлите вывод:<br/>' +
+					'<b>/usr/bin/tspu-test start www.youtube.com 1 2.5</b><br/>' +
+					'cat /tmp/tspu_test_run.log';
+			}
+		}, 25000);
+		var stopWatchdog = function () { clearTimeout(watchdog); };
 		xhr(url, function (t) {
+			stopWatchdog();
 			var em = (t || '').match(/^state=error msg=(.*)$/m);
 			if (em) {
 				setRunning(false);
 				elStatus.textContent = 'Ошибка запуска: ' + em[1];
+			} else if ((t || '').indexOf('state=started') < 0 &&
+					   (t || '').indexOf('state=running') < 0) {
+				setRunning(false);
+				elStatus.textContent = 'Неожиданный ответ запуска: ' + (t || '(пусто)').substring(0, 200);
 			}
 			update();
+		}, function (st) {
+			stopWatchdog();
+			setRunning(false);
+			elStatus.textContent = 'Не удалось обратиться к роутеру (HTTP ' + st + '). Проверьте сессию LuCI (выйдите и войдите заново) и повторите.';
 		});
 	};
 
@@ -438,51 +515,315 @@
 		});
 	};
 
-	/* ================= QUIC-тест ================= */
-	function setQuicRunning(r) {
-		elQStart.disabled = r;
-		elQStop.disabled = !r;
-		elQDomain.disabled = r;
-	}
-	function quicUpdate() {
-		xhr(U_QSTATUS, function (text) {
-			var parts = (text || '').split('\n--QUICLOG--\n');
-			var statusPart = parts[0] || '';
-			var logPart = (parts[1] || '').replace(/\r/g, '');
-			var st = { state: 'none', alive: '0', msg: '' };
-			statusPart.split('\n').forEach(function (line) {
-				var m = line.match(/^([a-z_]+)=(.*)$/);
-				if (m) st[m[1]] = m[2];
+	/* ================= Вкладки ================= */
+	window.tspuTab = function (name) {
+		var test = name === 'test';
+		document.getElementById('tspu_tab_test').style.display = test ? '' : 'none';
+		document.getElementById('tspu_tab_gen').style.display = test ? 'none' : '';
+		document.getElementById('tspu_tab_btn_test').className = test ? 'tspu-active' : '';
+		document.getElementById('tspu_tab_btn_gen').className = test ? '' : 'tspu-active';
+	};
+	document.getElementById('tspu_tab_btn_test').className = 'tspu-active';
+
+	/* ================= Генератор стратегий ================= */
+	function genEscape(s) { return (s || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+
+	function genParse(text) {
+		/* Возвращает { base, alts, cls, reco, stable, working }
+		   Источники: JSON *_check.json blockcheckw; текст «Рабочие стратегии»
+		   blockcheckw; ИТОГ/ОТЧЁТ TSPU test (все форматы — детерминированные). */
+		var clean = (text || '').replace(/\r/g, '');
+		var base = [], alts = [], cls = '';
+		var headChar = clean.replace(/^\s+/, '').charAt(0);
+		if (headChar === '{') {
+			var j = null;
+			try { j = JSON.parse(clean); } catch (err) { throw 'не удалось разобрать JSON: ' + err; }
+			(j.strategies || []).forEach(function (s) {
+				if (s.working === true && s.args) base.push({ proto: s.protocol, args: genEscape(s.args) });
 			});
-			var running = (st.state === 'installing' || st.state === 'downloading' || st.state === 'running') && st.alive === '1';
-			setQuicRunning(running || (st.state !== 'none' && st.state !== 'done' && st.state !== 'error'));
-			elQLogWrap.style.display = (st.state === 'none') ? 'none' : '';
-			var txt = 'QUIC: не запускался';
-			if (st.state === 'installing') txt = 'Подготовка: копирую скрипт в /opt/curl...';
-			else if (st.state === 'downloading') txt = 'Скачиваю h3-curl (' + (st.msg || 'curl13') + ')...';
-			else if (st.state === 'running') txt = 'Идёт QUIC-тест (10–20 минут)...';
-			else if (st.state === 'done') txt = (st.exit === '0') ? 'QUIC-тест завершён — отчёт в логе выше' : 'QUIC-тест завершился с кодом ' + (st.exit || '?');
-			else if (st.state === 'error') txt = 'Ошибка подготовки: ' + (st.msg || '?');
-			elQStatus.textContent = txt;
-			var lines = logPart ? logPart.split('\n') : [];
-			var shown = lines.length > 40 ? lines.slice(-40) : lines;
-			elQLog.value = shown.join('\n');
-			elQLog.scrollTop = elQLog.scrollHeight;
+			if (base.length) alts = base.slice(1, 3).map(function (b) { return { args: b.args, note: 'протокол ' + b.proto }; });
+			base = base.slice(0, 1);
+			return { base: base, alts: alts, cls: '', reco: {}, stable: {}, working: {} };
+		}
+		var lines = clean.split('\n');
+		/* blockcheckw текст: «=== Рабочие стратегии {proto} (n) ===» + «  #k nfqws2 args» */
+		var curProto = null, bw = false;
+		for (var i = 0; i < lines.length; i++) {
+			var mh = lines[i].match(/^=== Рабочие стратегии (\S+) \((\d+)\) ===/);
+			if (mh) { bw = true; curProto = mh[1]; continue; }
+			var mw = lines[i].match(/^\s*#\d+\s+nfqws2\s+(.+)$/);
+			if (mw && curProto) base.push({ proto: curProto, args: genEscape(mw[1]) });
+		}
+		if (bw) {
+			var uniq = [], seen = {};
+			base.forEach(function (b) {
+				var k = b.proto + '|' + b.args;
+				if (!seen[k]) { seen[k] = 1; uniq.push(b); }
+			});
+			base = uniq.slice(0, 1);
+			alts = uniq.slice(1, 3).map(function (a) { return { args: a.args, note: 'протокол ' + a.proto }; });
+			return { base: base, alts: alts, cls: '', reco: {}, stable: {}, working: {} };
+		}
+		/* TSPU test: вердикт + РЕКОМЕНДАЦИЯ + стабильно-списки + «Рабочие стратегии» */
+		var reco = {}, stable = { tls12: [], tls13: [] }, working = {};
+		for (var i2 = 0; i2 < lines.length; i2++) {
+			var mv = lines[i2].match(/^КЛАСС ТСПУ \((TLS 1\.[23])\): ([^—]*)/);
+			if (mv && !cls) cls = mv[2].replace(/\s*$/, '');
+			var ms12 = lines[i2].match(/^tls12 стабильно:\s*([^|]+)/);
+			if (ms12) { var t12 = ms12[1].match(/\d+/g) || []; stable.tls12 = t12.map(Number); }
+			var ms13 = lines[i2].match(/^tls13 стабильно:\s*([^|]+)/);
+			if (ms13) { var t13 = ms13[1].match(/\d+/g) || []; stable.tls13 = t13.map(Number); }
+			var mr = lines[i2].match(/^РЕКОМЕНДАЦИЯ \((TLS 1\.[23])\): начните со строки (\d+)/);
+			if (mr) reco[mr[1]] = parseInt(mr[2], 10);
+			if (lines[i2].indexOf('РЕКОМЕНДАЦИЯ') === 0) {
+				for (var k2 = i2 + 1; k2 < lines.length; k2++) {
+					var st2 = lines[k2].replace(/^\s+/, '');
+					if (st2.indexOf('--payload=') === 0) { base.push({ proto: '', args: genEscape(st2) }); break; }
+					if (lines[k2].indexOf('КЛАСС ТСПУ') === 0 || lines[k2].indexOf('РЕКОМЕНДАЦИЯ') === 0 || lines[k2].indexOf('=== ') === 0) break;
+				}
+			}
+			var mw2 = lines[i2].match(/^\s*(\d+)\s+\[(TLS 1\.2 и 1\.3|TLS 1\.2|TLS 1\.3)\]:\s+(.+)$/);
+			if (mw2) working[parseInt(mw2[1], 10)] = genEscape(mw2[3]);
+		}
+		/* Дедупликация по args: если TLS 1.2 и 1.3 сошлись на одной строке — одна базовая */
+		var bseen = {}, buniq = [];
+		base.forEach(function (b) {
+			if (!bseen[b.args]) { bseen[b.args] = 1; buniq.push(b); }
 		});
+		base = buniq;
+		/* Базовый номер: из РЕКОМЕНДАЦИИ (TLS 1.2 приоритет) или первый рабочий */
+		var baseNum = reco['TLS 1.2'] || reco['TLS 1.3'] || null;
+		if (!baseNum) {
+			var nums = Object.keys(working).map(Number).sort(function (a, b) { return a - b; });
+			baseNum = nums.length ? nums[0] : null;
+		}
+		/* Если рекомендаций нет (старый отчёт) — база из «Рабочих стратегий» */
+		if (!base.length && baseNum && working[baseNum]) {
+			base = [{ proto: '', args: working[baseNum] }];
+		}
+		alts = Object.keys(working).map(Number).sort(function (a, b) { return a - b; })
+			.filter(function (n) { return n !== baseNum; })
+			.slice(0, 2)
+			.map(function (n) { return { args: working[n], note: 'строка ' + n }; });
+		return { base: base, alts: alts, cls: cls, reco: reco, stable: stable, working: working, baseNum: baseNum };
 	}
-	window.tspuQuicStart = function () {
-		setQuicRunning(true);
-		elQStatus.textContent = 'Запуск: подготовка h3-curl и скрипта...';
-		elQLogWrap.style.display = '';
-		elQLog.value = '';
-		xhr(U_QSTART + '?domain=' + encodeURIComponent(elQDomain.value || 'www.youtube.com'), null);
-		quicUpdate();
+
+	window.tspuGenerate = function () {
+		var raw = elGenInput.value || '';
+		if (!raw.replace(/\s/g, '')) {
+			elGenStatus.textContent = 'Вставьте отчёт — или нажмите «Вставить отчёт последнего теста»';
+			return;
+		}
+		var parsed;
+		try { parsed = genParse(raw); }
+		catch (err) { elGenStatus.textContent = 'Ошибка разбора: ' + err; return; }
+		if (!parsed.base.length) {
+			elGenStatus.textContent = 'В отчёте нет рабочих стратегий. Проверьте, что вставлен блок ИТОГ/ОТЧЁТ целиком.';
+			elGenOutWrap.style.display = 'none';
+			return;
+		}
+
+		/* ---------- сборка четырёх вариантов (формат Zapret2_strategy) ---------- */
+		var baseArgs = parsed.base[0].args;
+		var baseNum = parsed.baseNum;
+		var st12 = parsed.stable.tls12 || [];
+		var st13 = parsed.stable.tls13 || [];
+		function stableBoth(n) {
+			if (!st12.length && !st13.length) return true; /* старый отчёт без списков */
+			if (st12.length && st13.length) return st12.indexOf(n) >= 0 && st13.indexOf(n) >= 0;
+			return st12.indexOf(n) >= 0 || st13.indexOf(n) >= 0;
+		}
+		function stripPayload(args) {
+			return args.replace(/^--payload=\S+\s+/, '');
+		}
+		function withPreamble(args) {
+			var l = ['--out-range=-s34228'];
+			var rest = genEscape(args);
+			if (rest.indexOf('--payload=') === 0) {
+				var sp = rest.indexOf(' ');
+				if (sp > 0) { l.push(rest.substring(0, sp)); rest = rest.substring(sp + 1); }
+				else { l.push(rest); rest = ''; }
+			}
+			if (rest) l.push(rest);
+			return l;
+		}
+		function tagStrategy(args, n) {
+			/* добавить :strategy=N к каждому --lua-desync строки
+			   (в т.ч. когда строка НАЧИНАЕТСЯ с --lua-desync=) */
+			var startsWithDesync = args.indexOf('--lua-desync=') === 0;
+			var parts = args.split(' --lua-desync=');
+			var out = [];
+			for (var i = 0; i < parts.length; i++) {
+				if (i === 0) {
+					out.push(startsWithDesync ? parts[0] + ':strategy=' + n : parts[0]);
+				} else {
+					out.push(' --lua-desync=' + parts[i] + ':strategy=' + n);
+				}
+			}
+			return out.join('');
+		}
+		var isTspu = Object.keys(parsed.working).length > 0; /* отчёт TSPU (есть номера строк) */
+		var wk = parsed.working;
+		var stable = [];
+		if (isTspu) {
+			var both = [];
+			for (var n = 1; n <= 17; n++) if (stableBoth(n)) both.push(n);
+			stable = both;
+			if (!stable.length) { /* протоколы разошлись — берём объединение */ 
+				for (var m = 1; m <= 17; m++) if (st12.indexOf(m) >= 0 || st13.indexOf(m) >= 0) stable.push(m);
+			}
+		}
+		function hasFake(num) { return num >= 7 && num <= 16; }
+
+		/* --- Вариант 1: Минимальная (основная) — рекомендованная строка --- */
+		var v1 = withPreamble(baseArgs);
+
+		/* --- Вариант 2: Усиление стабильности --- */
+		var v2 = null, v2note = '';
+		if (!isTspu) {
+			v2 = null; v2note = '— доступен по отчёту TSPU test (нужны номера строк)';
+		} else {
+			var cands2 = [4, 6, 5, 2, 17, 3, 12, 16, 13, 14, 15, 11];
+			for (var c2 = 0; c2 < cands2.length && !v2; c2++) {
+				var n2 = cands2[c2];
+				if (n2 === baseNum || stable.indexOf(n2) < 0 || !wk[n2]) continue;
+				if (n2 === 4) { v2 = withPreamble(wk[4]).slice(0, 2); v2.push('--lua-desync=multidisorder:pos=1,midsld-1,midsld'); v2note = 'три разреза: ведущий байт, левее середины и середина'; }
+				else if (n2 === 2) { v2 = withPreamble(wk[2]).slice(0, 2); v2.push('--lua-desync=multisplit:pos=midsld-1,midsld'); v2note = 'два разреза: левее середины и середина'; }
+				else { v2 = withPreamble(wk[n2]); v2note = 'строка ' + n2 + ' отчёта'; }
+			}
+			if (!v2) v2note = '— на вашем ТСПУ другие механизмы нарезки не прошли';
+		}
+
+		/* --- Вариант 3: Оптимальная с фейком (разрез → фейк) --- */
+		var v3 = null, v3note = '';
+		if (!isTspu) {
+			v3note = '— доступен по отчёту TSPU test (нужны номера строк)';
+		} else {
+			var fakeOk = stable.filter(hasFake);
+			if (!fakeOk.length) {
+				v3note = '— фейковые компоненты на вашем ТСПУ отсекаются (строки 7–16 не прошли)';
+			} else {
+				var v3lines = withPreamble(baseArgs);
+				var fakeLine = null, fakeNum = 0;
+				var order3 = [10, 7, 12, 11, 16, 13, 14, 15];
+				for (var c3 = 0; c3 < order3.length && !fakeLine; c3++) {
+					var n3 = order3[c3];
+					if (stable.indexOf(n3) >= 0 && wk[n3] && n3 !== baseNum) {
+						fakeLine = stripPayload(wk[n3]);
+						fakeNum = n3;
+					}
+				}
+				if (!fakeLine) {
+					v3note = 'ваша базовая уже содержит фейк (класс L2)';
+				} else {
+					if (fakeLine.indexOf(':repeats=') < 0) fakeLine = fakeLine + ':repeats=2';
+					v3lines.push(fakeLine);
+					v3note = 'порядок «разрез → фейк» (строка ' + fakeNum + ' отчёта)';
+				}
+				v3 = v3lines;
+			}
+		}
+
+		/* --- Вариант 4: Лестница-страховка (circular + strategy=1..N) --- */
+		var v4 = null, v4note = '';
+		if (!isTspu) {
+			v4note = '— доступен по отчёту TSPU test (нужны номера строк)';
+		} else {
+			var fakeSteps = [];
+			var order4 = [13, 14, 15, 10, 7, 12, 11, 16];
+			for (var c4 = 0; c4 < order4.length; c4++) {
+				var n4 = order4[c4];
+				if (n4 === baseNum || stable.indexOf(n4) < 0 || !wk[n4]) continue;
+				fakeSteps.push(tagStrategy(stripPayload(wk[n4]), fakeSteps.length + 2));
+				if (fakeSteps.length >= 2) break;
+			}
+			if (!fakeSteps.length) {
+				v4note = '— требует хотя бы одной фейковой ступени (13–16 или 7): на вашем ТСПУ они не прошли';
+			} else {
+				v4 = ['--out-range=-s34228',
+					'--in-range=-s5556',
+					'--lua-desync=circular:fails=2:time=120:retrans=3:nld=2:reset',
+					'--in-range=x',
+					'--payload=tls_client_hello',
+					tagStrategy(stripPayload(baseArgs), 1)].concat(fakeSteps);
+				v4note = 'ступень 1 — ваша база; ступени 2+ — фейковые страховки; сама вернётся на ступень 1';
+			}
+		}
+
+		/* ---------- вывод ---------- */
+		var o = [];
+		o.push('=== ГОТОВЫЕ СТРАТЕГИИ ДЛЯ ZAPRET2 ===');
+		if (parsed.cls) o.push('Класс ТСПУ: ' + parsed.cls);
+		o.push('');
+		o.push('1. Минимальная (основная) — начните с неё:');
+		o = o.concat(v1);
+		o.push('');
+		o.push('2. Усиление стабильности (если минимальная иногда сбоит):');
+		if (v2) o = o.concat(v2); else o.push(v2note);
+		if (v2note && v2) o.push('   (' + v2note + ')');
+		o.push('');
+		o.push('3. Оптимальная с фейком (устойчивее к обновлениям ТСПУ):');
+		if (v3) o = o.concat(v3); else o.push(v3note);
+		if (v3note && v3) o.push('   (' + v3note + ')');
+		o.push('');
+		o.push('4. Лестница-страховка (сама повышает ступень при блокировках и возвращается):');
+		if (v4) o = o.concat(v4); else o.push(v4note);
+		if (v4note && v4) o.push('   (' + v4note + ')');
+		o.push('');
+		o.push('— Как применить: скопируйте выбранный вариант ЦЕЛИКОМ в поле script');
+		o.push('  профиля Zapret2 (многострочно — так и нужно), или секцией:');
+		o.push("config strategy 'tspu_test'");
+		o.push("\toption enabled '1'");
+		o.push("\toption port '443'");
+		o.push("\tlist protocol 'tcp'");
+		o.push("\tlist filter_l3 'ipv4'");
+		o.push("\tlist filter_l7 'tls'");
+		o.push("\toption script '" + v1.join('\n') + "'");
+		o.push('После правки: /etc/init.d/zapret2 restart — и проверьте в браузере (Инкогнито).');
+		o.push('— Профиль: TCP, порт 443, IPv4, L7=TLS.');
+		o.push('— Если сайт работает, а видео тормозит: прогоните тест по узлу googlevideo');
+		o.push('  (F12 → Network → videoplayback) и сгенерируйте стратегию по его отчёту —');
+		o.push('  добавьте её второй секцией.');
+		elGenOut.value = o.join('\n');
+		elGenOutWrap.style.display = '';
+		elGenStatus.textContent = 'Стратегии готовы — скопируйте нужный вариант в Zapret2 (подсказка под полем).';
 	};
-	window.tspuQuicStop = function () {
-		xhr(U_QSTOP, function () { quicUpdate(); });
+
+	window.tspuGenFetch = function () {
+		xhr(U_LOG, function (t) {
+			var clean = (t || '').replace(/\r/g, '');
+			var s = clean.indexOf('=== ИТОГ');
+			if (s < 0) {
+				elGenStatus.textContent = 'Отчёт ещё не сформирован — запустите тест на вкладке «Тест»';
+				return;
+			}
+			var e = clean.indexOf('=== конец отчёта ===');
+			var end = (e >= 0) ? e + '=== конец отчёта ==='.length : clean.length;
+			elGenInput.value = clean.substring(s, end);
+			elGenStatus.textContent = 'Отчёт последнего теста вставлен. Нажмите «Сгенерировать стратегии».';
+		});
 	};
-	setInterval(quicUpdate, 3000);
-	quicUpdate();
+
+	window.tspuGenClear = function () {
+		elGenInput.value = '';
+		elGenOut.value = '';
+		elGenOutWrap.style.display = 'none';
+		elGenStatus.textContent = '';
+	};
+
+	window.tspuGenCopy = function () {
+		var tmp = document.createElement('textarea');
+		tmp.value = elGenOut.value;
+		tmp.style.position = 'fixed';
+		tmp.style.left = '-9999px';
+		document.body.appendChild(tmp);
+		tmp.select();
+		var done = false;
+		try { done = document.execCommand('copy'); } catch (err) { done = false; }
+		document.body.removeChild(tmp);
+		elGenStatus.textContent = done ? 'Результат скопирован в буфер обмена' : 'Не удалось скопировать — выделите текст вручную';
+	};
+
 	setInterval(update, 3000);
 	update();
 })();

@@ -11,6 +11,8 @@
 	.tspu-verdict-l2 { color: #ef6c00; }
 	.tspu-verdict-special { color: #1565c0; }
 	#tspu_verdict .cbi-value-field { white-space: pre-line; }
+	#tspu_reco .cbi-value-field { white-space: pre-line; }
+	.tspu-reco-text { color: #1565c0; }
 	#tspu_attempts .att-ok { color: #2e7d32; }
 	#tspu_attempts .att-part { color: #ef6c00; font-weight: bold; }
 	#tspu_attempts .att-zero { color: #999; }
@@ -19,7 +21,7 @@
 <div class="cbi-map" id="tspu_test_map">
 	<h2><a id="content" name="content">TSPU test — класс ТСПУ провайдера<span id="tspu_title_ver"></span></a></h2>
 	<div class="cbi-map-descr">
-		<p>Определяет, какие механики десинхронизации пропускает ТСПУ вашего провайдера: 16 стратегий (нарезка / голый фейк / комбинации) на TLS 1.2 и TLS 1.3 в режиме SCANLEVEL=force. По результатам печатается вердикт «КЛАСС ТСПУ».</p>
+		<p>Определяет, какие механики десинхронизации пропускает ТСПУ вашего провайдера: 17 стратегий (нарезка / голый фейк / комбинации / двухпакетный hello) на TLS 1.2 и TLS 1.3 в режиме SCANLEVEL=force. По результатам печатается вердикт «КЛАСС ТСПУ» и рекомендация — с какой готовой строки начать.</p>
 		<p>На время теста служба Zapret2 останавливается и запускается обратно по завершении. Финальную проверку стратегии всегда делайте в браузере в режиме Инкогнито.</p>
 	</div>
 
@@ -70,6 +72,7 @@
 				<button id="tspu_btn_start" class="btn cbi-button cbi-button-apply" onclick="tspuStart()">Запустить тест</button>
 				<button id="tspu_btn_clear" class="btn cbi-button cbi-button-neutral" onclick="tspuClear()">Очистить лог</button>
 				<button id="tspu_btn_copy" class="btn cbi-button cbi-button-neutral" onclick="tspuCopy()">Скопировать отчёт</button>
+				<button id="tspu_btn_prompt" class="btn cbi-button cbi-button-neutral" onclick="tspuPrompt()">Промт для нейросети</button>
 				<div id="tspu_status" style="margin-top:.3em; font-size:.92em"></div>
 				<div style="color:#888; margin-top:.3em; font-size:.92em">В терминале можно:<br/>Остановить тест: /usr/bin/tspu-test stop<br/>Следить за прогрессом: /usr/bin/tspu-test status</div>
 			</div>
@@ -80,10 +83,30 @@
 				<span id="tspu_verdict_text" style="font-weight:bold; white-space:pre-line"></span>
 			</div>
 		</div>
+		<div class="cbi-value" id="tspu_reco" style="display:none">
+			<label class="cbi-value-title">Рекомендация — с чего начать</label>
+			<div class="cbi-value-field">
+				<span id="tspu_reco_text" class="tspu-reco-text" style="white-space:pre-line"></span>
+			</div>
+		</div>
 		<div class="cbi-value" id="tspu_attempts_wrap" style="display:none">
 			<label class="cbi-value-title">Попытки</label>
 			<div class="cbi-value-field">
 				<div id="tspu_attempts" style="font-family:monospace; white-space:pre-wrap"></div>
+			</div>
+		</div>
+		<div class="cbi-value">
+			<label class="cbi-value-title">Что делать после теста</label>
+			<div class="cbi-value-field">
+				<details style="color:#555">
+					<summary style="cursor:pointer">3 шага: от вердикта к работающей стратегии</summary>
+					<ol style="margin:.4em 0 .2em 1.2em; padding:0">
+						<li>Скопируйте строку из блока <b>«Рекомендация»</b> — это готовая стратегия, которая прошла тест на вашем ТСПУ.</li>
+						<li>Вставьте её в настройку стратегий Zapret2 (LuCI → Zapret2 → ваш профиль, редактор стратегий) и перезапустите Zapret2. Остальные строки профиля не меняйте.</li>
+						<li>Проверьте в браузере в режиме <b>Инкогнито</b> (Ctrl+F5). Если сайт работает, а видео тормозит — прогоните тест по узлу googlevideo (подсказка над формой) и добавьте его строку второй.</li>
+					</ol>
+					<p style="margin:.2em 0">Кнопка «Промт для нейросети» соберёт готовый запрос с вашим отчётом — вставьте его в любой чат-бот (ChatGPT, GigaChat, NotebookLM и т.п.), чтобы получить 2–3 варианта стратегии с объяснениями.</p>
+				</details>
 			</div>
 		</div>
 		<div class="cbi-value">
@@ -106,7 +129,21 @@
 				<span style="color:#888; margin-left:.6em">/tmp/class_test.log.short и /tmp/class_test.log — создаются при запуске теста, очищаются при перезагрузке роутера</span>
 			</div>
 		</div>
-		<div class="cbi-value" style="margin-top:.6em; color:#888">
+				<div class="cbi-value" style="margin-top:1em">
+			<label class="cbi-value-title">QUIC-тест (UDP 443)</label>
+			<div class="cbi-value-field">
+				<p style="margin:0 0 .4em">Отдельный QUIC-класс ТСПУ: тест и h3-curl ставятся автоматически на страницу запуска (без терминала), корпус blockcheck2 (10–20 минут), вердикт «КЛАСС ТСПУ (QUIC)» с готовым профилем. На время теста Zapret2 останавливается и возвращается по завершении. Видео тестируйте по узлу rr1---sn-….googlevideo.com (F12 → Network → videoplayback); корневой googlevideo.com закрывают наглухо.</p>
+				<input id="tspu_quic_domain" type="text" class="cbi-input-text" style="width:100%; max-width:420px" value="www.youtube.com" />
+				<button id="tspu_quic_start" class="btn cbi-button cbi-button-apply" onclick="tspuQuicStart()">Установить и запустить</button>
+				<button id="tspu_quic_stop" class="btn cbi-button cbi-button-negative" disabled="disabled" onclick="tspuQuicStop()">Остановить</button>
+				<div id="tspu_quic_status" style="color:#888; margin-top:.3em">QUIC: не запускался</div>
+				<div id="tspu_quic_logwrap" style="display:none; margin-top:.4em">
+					<textarea id="tspu_quic_log" readonly="readonly" wrap="off" style="width:100%; height:180px; font-family:monospace; white-space:pre; padding:.5em"></textarea>
+				</div>
+				<p style="margin:.4em 0 0; color:#888">Если кнопка молчит в вашем браузере — <a href="<%=luci.dispatcher.build_url("admin/services/tspu-test/quicpage")%>">страница QUIC-теста без JavaScript</a> (форма + автообновление статуса).</p>
+			</div>
+		</div>
+<div class="cbi-value" style="margin-top:.6em; color:#888">
 			<span>Полные логи на роутере: /tmp/class_test.log (сырой), /tmp/class_test.log.short (краткий, для issue). Скрипт: /usr/bin/tspu-test.
 			Проект: <a href="https://github.com/saitkul/tspu-class-test/" target="_blank" rel="noopener">github.com/saitkul/tspu-class-test</a></span>
 		</div>
@@ -121,6 +158,9 @@
 	var U_CLEAR  = '<%=luci.dispatcher.build_url("admin/services/tspu-test/clearlog")%>';
 	var U_LOG    = '<%=luci.dispatcher.build_url("admin/services/tspu-test/log")%>';
 	var U_DL     = '<%=luci.dispatcher.build_url("admin/services/tspu-test/download")%>';
+	var U_QSTART  = '<%=luci.dispatcher.build_url("admin/services/tspu-test/quicstart")%>';
+	var U_QSTOP   = '<%=luci.dispatcher.build_url("admin/services/tspu-test/quicstop")%>';
+	var U_QSTATUS = '<%=luci.dispatcher.build_url("admin/services/tspu-test/quicstatus")%>';
 
 	var elDomain = document.getElementById('tspu_domain');
 	var elRep = document.getElementById('tspu_repeats');
@@ -128,6 +168,7 @@
 	var elStart = document.getElementById('tspu_btn_start');
 	var elClear = document.getElementById('tspu_btn_clear');
 	var elCopy = document.getElementById('tspu_btn_copy');
+	var elPrompt = document.getElementById('tspu_btn_prompt');
 	var elStatus = document.getElementById('tspu_status');
 	var elTitleVer = document.getElementById('tspu_title_ver');
 	var titleVerDone = false;
@@ -138,9 +179,20 @@
 	var elDlFull = document.getElementById('tspu_dl_full');
 	var elVerdict = document.getElementById('tspu_verdict');
 	var elVerdictText = document.getElementById('tspu_verdict_text');
+	var elReco = document.getElementById('tspu_reco');
+	var elRecoText = document.getElementById('tspu_reco_text');
 	var elAttemptsWrap = document.getElementById('tspu_attempts_wrap');
 	var elAttempts = document.getElementById('tspu_attempts');
 	var lastLog = null;
+	/* QUIC-тест */
+	var elQDomain = document.getElementById('tspu_quic_domain');
+	var elQStart = document.getElementById('tspu_quic_start');
+	var elQStop = document.getElementById('tspu_quic_stop');
+	var elQStatus = document.getElementById('tspu_quic_status');
+	var elQLog = document.getElementById('tspu_quic_log');
+	var elQLogWrap = document.getElementById('tspu_quic_logwrap');
+	var lastLog = null;
+	/* QUIC-тест */
 
 	elDlShort.href = U_DL + '?which=short';
 	elDlFull.href = U_DL + '?which=full';
@@ -165,11 +217,12 @@
 		elDomain.disabled = r;
 		elRep.disabled = r;
 		elWait.disabled = r;
-		/* Во время теста Старт, Очистить лог и Скопировать отчёт пассивны.
+		/* Во время теста Старт, Очистить лог, Скопировать отчёт и Промт пассивны.
 		   Кнопки «Остановить» нет (решение владельца): остановка —
 		   /usr/bin/tspu-test stop в терминале. */
 		elClear.disabled = r;
 		elCopy.disabled = r;
+		elPrompt.disabled = r;
 	}
 
 	function applyStatus(text) {
@@ -254,6 +307,22 @@
 			elVerdict.style.display = 'none';
 		}
 
+		/* Рекомендация: строки «РЕКОМЕНДАЦИЯ (…)» + готовая стратегия
+		   (   --payload=…) + подсказка про googlevideo — из блока ИТОГ */
+		var rec = [];
+		for (var i = 0; i < lines.length; i++) {
+			var tr = lines[i].replace(/^\s+/, '');
+			if (lines[i].indexOf('РЕКОМЕНДАЦИЯ') === 0 ||
+				tr.indexOf('--payload=') === 0 ||
+				lines[i].indexOf('ПОДСКАЗКА: если сайт открывается') === 0) rec.push(tr);
+		}
+		if (rec.length) {
+			elRecoText.textContent = rec.join('\n');
+			elReco.style.display = '';
+		} else {
+			elReco.style.display = 'none';
+		}
+
 		/* Таблица попыток с подсветкой: полный успех - зелёный,
 		   нестабильные (1-2 из N) - оранжевый, ноль - приглушённый */
 		if (att.length) {
@@ -335,6 +404,85 @@
 		});
 	};
 
+	window.tspuPrompt = function () {
+		/* Готовый промт с отчётом: пользователь вставляет его в любой чат-бот
+		   и получает 2-3 варианта стратегии без знания Zapret2 */
+		xhr(U_LOG, function (t) {
+			var clean = (t || '').replace(/\r/g, '');
+			var s = clean.indexOf('=== ИТОГ');
+			if (s < 0) {
+				elStatus.textContent = 'Отчёт ещё не сформирован — запустите тест';
+				return;
+			}
+			var e = clean.indexOf('=== конец отчёта ===');
+			var end = (e >= 0) ? e + '=== конец отчёта ==='.length : clean.length;
+			var block = clean.substring(s, end);
+			var prompt =
+				'Ты — эксперт по сетевым технологиям и обхождению DPI с помощью Zapret2 (nfqws2) на роутерах OpenWrt.\n' +
+				'Ниже — результат теста класса ТСПУ моего провайдера (TSPU test, blockcheck2, SCANLEVEL=force).\n' +
+				'Задача: сформируй 2-3 варианта оптимальной индивидуальной стратегии для моего класса ТСПУ.\n' +
+				'Для каждого варианта дай: готовую строку для профиля Zapret2, объяснение механики простыми словами и что проверить в браузере.\n' +
+				'Учитывай: у curl (mbedTLS) и браузеров разный отпечаток (у браузеров hello двухпакетный, kyber); медиа-узлы googlevideo часто требуют отдельной строки; строки с seqovl могут ломать некоторые клиенты.\n' +
+				'Справочники Zapret2: https://raw.githubusercontent.com/bol-van/zapret2/refs/heads/master/docs/manual.md и https://zapret2-guide.pages.dev/\n\n' +
+				'=== МОЙ ОТЧЁТ ===\n' + block + '\n=== КОНЕЦ МОЕГО ОТЧЁТА ===';
+			var tmp = document.createElement('textarea');
+			tmp.value = prompt;
+			tmp.style.position = 'fixed';
+			tmp.style.left = '-9999px';
+			document.body.appendChild(tmp);
+			tmp.select();
+			var done = false;
+			try { done = document.execCommand('copy'); } catch (err) { done = false; }
+			document.body.removeChild(tmp);
+			elStatus.textContent = done ? 'Промт скопирован — вставьте его в любой чат-бот (ChatGPT, GigaChat, NotebookLM…)' : 'Не удалось скопировать — выделите текст вручную';
+		});
+	};
+
+	/* ================= QUIC-тест ================= */
+	function setQuicRunning(r) {
+		elQStart.disabled = r;
+		elQStop.disabled = !r;
+		elQDomain.disabled = r;
+	}
+	function quicUpdate() {
+		xhr(U_QSTATUS, function (text) {
+			var parts = (text || '').split('\n--QUICLOG--\n');
+			var statusPart = parts[0] || '';
+			var logPart = (parts[1] || '').replace(/\r/g, '');
+			var st = { state: 'none', alive: '0', msg: '' };
+			statusPart.split('\n').forEach(function (line) {
+				var m = line.match(/^([a-z_]+)=(.*)$/);
+				if (m) st[m[1]] = m[2];
+			});
+			var running = (st.state === 'installing' || st.state === 'downloading' || st.state === 'running') && st.alive === '1';
+			setQuicRunning(running || (st.state !== 'none' && st.state !== 'done' && st.state !== 'error'));
+			elQLogWrap.style.display = (st.state === 'none') ? 'none' : '';
+			var txt = 'QUIC: не запускался';
+			if (st.state === 'installing') txt = 'Подготовка: копирую скрипт в /opt/curl...';
+			else if (st.state === 'downloading') txt = 'Скачиваю h3-curl (' + (st.msg || 'curl13') + ')...';
+			else if (st.state === 'running') txt = 'Идёт QUIC-тест (10–20 минут)...';
+			else if (st.state === 'done') txt = (st.exit === '0') ? 'QUIC-тест завершён — отчёт в логе выше' : 'QUIC-тест завершился с кодом ' + (st.exit || '?');
+			else if (st.state === 'error') txt = 'Ошибка подготовки: ' + (st.msg || '?');
+			elQStatus.textContent = txt;
+			var lines = logPart ? logPart.split('\n') : [];
+			var shown = lines.length > 40 ? lines.slice(-40) : lines;
+			elQLog.value = shown.join('\n');
+			elQLog.scrollTop = elQLog.scrollHeight;
+		});
+	}
+	window.tspuQuicStart = function () {
+		setQuicRunning(true);
+		elQStatus.textContent = 'Запуск: подготовка h3-curl и скрипта...';
+		elQLogWrap.style.display = '';
+		elQLog.value = '';
+		xhr(U_QSTART + '?domain=' + encodeURIComponent(elQDomain.value || 'www.youtube.com'), null);
+		quicUpdate();
+	};
+	window.tspuQuicStop = function () {
+		xhr(U_QSTOP, function () { quicUpdate(); });
+	};
+	setInterval(quicUpdate, 3000);
+	quicUpdate();
 	setInterval(update, 3000);
 	update();
 })();

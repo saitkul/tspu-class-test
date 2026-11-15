@@ -3,12 +3,34 @@
 		"description": "TSPU test - определение класса ТСПУ провайдера",
 		"read": {
 			"ubus": {
-				"file": [ "exec", "read", "list" ]
+				"file": [
+					"exec",
+					"read",
+					"list"
+				]
 			},
 			"file": {
-				"/tmp/tspu_test_run.log": [ "read" ],
-				"/tmp/tspu_test.status": [ "read" ],
-				"/usr/bin/tspu-test": [ "exec" ]
+				"/tmp/tspu_test_run.log": [
+					"read"
+				],
+				"/tmp/tspu_test.status": [
+					"read"
+				],
+				"/usr/bin/tspu-test": [
+					"exec"
+				],
+				"/opt/curl/quic_test.log": [
+					"read"
+				],
+				"/opt/curl/quic_test.log.short": [
+					"read"
+				],
+				"/tmp/tspu_quic.status": [
+					"read"
+				],
+				"/usr/share/tspu-test/quic_class_test.sh": [
+					"read"
+				]
 			}
 		}
 	}

@@ -536,7 +536,7 @@
 		   ветки разбирают только СВОЙ формат. */
 		var clean = (text || '').replace(/\r/g, '');
 		var base = [], alts = [], cls = '';
-		var reco = {}, stable = { tls12: [], tls13: [] }, working = {}, baseNum = null;
+		var reco = {}, stable = { tls12: [], tls13: [] }, working = {}, baseNum = null, clsMap = {}, flap = { tls12: false, tls13: false }, lastProto = null;
 		var headChar = clean.replace(/^\s+/, '').charAt(0);
 		if (headChar === '{') {
 			var j = null;
@@ -556,7 +556,7 @@
 		if (clean.indexOf('- curl_test_https_') >= 0 &&
 			(clean.indexOf('[attempt') >= 0 || clean.indexOf('UNAVAILABLE code=') >= 0 ||
 			 clean.indexOf('!!!!! AVAILABLE') >= 0)) {
-			var res = { tls12: {}, tls13: {}, http: {} };
+			var res = { tls12: {}, tls13: {}, http: {} }, slow = { tls12: false, tls13: false };
 			var rProto = null, rArgs = null, rOk = 0, rTot = 0, rSeen = false;
 			function numForArgs(a) {
 				a = genEscape(a);
@@ -597,6 +597,7 @@
 					if (rSeen === false) { rSeen = true; rOk = 0; rTot = 0; }
 					rTot++;
 					if (rl.indexOf('AVAILABLE') >= 0) rOk++;
+					else if ((rProto === 'tls12' || rProto === 'tls13') && rl.indexOf('bytes received') >= 0) slow[rProto] = true;
 					continue;
 				}
 				if (rSeen) continue; /* итоговая строка после попыток — попытки уже учтены */
@@ -624,7 +625,7 @@
 			alts = rawNums.filter(function (n) { return n !== rawBase; }).slice(0, 2)
 				.map(function (n) { return { args: w2[n], note: 'строка ' + n }; });
 			stable = { tls12: rawNums, tls13: rawNums };
-			return { base: base, alts: alts, cls: '', reco: {}, stable: stable, working: working, baseNum: baseNum };
+			return { base: base, alts: alts, cls: '', reco: {}, stable: stable, working: working, baseNum: baseNum, flap: slow };
 		}
 		/* blockcheckw текст: «=== Рабочие стратегии {proto} (n) ===» + «  #k nfqws2 args» */
 		var curProto = null, bw = false;
@@ -647,11 +648,23 @@
 		/* TSPU test: вердикт + РЕКОМЕНДАЦИЯ + стабильно-списки + «Рабочие стратегии» */
 		for (var i2 = 0; i2 < lines.length; i2++) {
 			var mv = lines[i2].match(/^КЛАСС ТСПУ \((TLS 1\.[23])\): ([^—]*)/);
-			if (mv && !cls) cls = mv[2].replace(/\s*$/, '');
+			if (mv) { clsMap[mv[1]] = mv[2].replace(/\s*$/, ''); if (!cls) cls = clsMap[mv[1]]; }
 			var ms12 = lines[i2].match(/^tls12 стабильно:\s*([^|]+)/);
-			if (ms12) { var t12 = ms12[1].match(/\d+/g) || []; stable.tls12 = t12.map(Number); }
+			if (ms12) { var t12 = ms12[1].match(/\d+/g) || []; stable.tls12 = t12.map(Number); lastProto = 'tls12'; }
 			var ms13 = lines[i2].match(/^tls13 стабильно:\s*([^|]+)/);
-			if (ms13) { var t13 = ms13[1].match(/\d+/g) || []; stable.tls13 = t13.map(Number); }
+			if (ms13) { var t13 = ms13[1].match(/\d+/g) || []; stable.tls13 = t13.map(Number); lastProto = 'tls13'; }
+			/* slow-path: строки «попытки (строка:…) k:ok/tot~N» — ~N = данные шли, но не успели */
+			var ma = lines[i2].match(/^Попытки (TLS 1\.[23]) \(строка/);
+			var mi = lines[i2].match(/^\s*попытки \(строка/);
+			if (ma || mi) {
+				var protoKey = ma ? (ma[1] === 'TLS 1.2' ? 'tls12' : 'tls13') : lastProto;
+				if (protoKey) {
+					var toks = lines[i2].match(/\d+:\d+\/\d+(~\d+)?/g) || [];
+					for (var tk = 0; tk < toks.length; tk++) {
+						if (toks[tk].indexOf('~') > 0) { flap[protoKey] = true; break; }
+					}
+				}
+			}
 			var mr = lines[i2].match(/^РЕКОМЕНДАЦИЯ \((TLS 1\.[23])\): начните со строки (\d+)/);
 			if (mr) reco[mr[1]] = parseInt(mr[2], 10);
 			if (lines[i2].indexOf('РЕКОМЕНДАЦИЯ') === 0) {
@@ -684,7 +697,7 @@
 			.filter(function (n) { return n !== baseNum; })
 			.slice(0, 2)
 			.map(function (n) { return { args: working[n], note: 'строка ' + n }; });
-		return { base: base, alts: alts, cls: cls, reco: reco, stable: stable, working: working, baseNum: baseNum };
+		return { base: base, alts: alts, cls: cls, clsMap: clsMap, flap: flap, reco: reco, stable: stable, working: working, baseNum: baseNum };
 	}
 
 	window.tspuGenerate = function () {
@@ -825,16 +838,22 @@
 		if (!isTspu) {
 			v4note = '— доступен по отчёту TSPU test (нужны номера строк)';
 		} else {
-			var fakeSteps = [];
-			var order4 = [13, 14, 15, 10, 7, 12, 11, 16];
-			for (var c4 = 0; c4 < order4.length; c4++) {
-				var n4 = order4[c4];
+			/* ступени лестницы: ВСЕ прошедшие строки отчёта — сначала стабильные
+			   на протоколе базы, затем остальные (лимит 9 ступеней с базой) */
+			var baseList = st12.indexOf(baseNum) >= 0 ? st12 : st13;
+			var pool = [], ordered = [], p1, p2;
+			for (var n4 = 1; n4 <= 17; n4++) {
 				if (n4 === baseNum || stable.indexOf(n4) < 0 || !wk[n4]) continue;
-				fakeSteps.push(tagStrategy(stripPayload(wk[n4]), fakeSteps.length + 2));
-				if (fakeSteps.length >= 2) break;
+				pool.push(n4);
+			}
+			for (p1 = 0; p1 < pool.length; p1++) if (baseList.indexOf(pool[p1]) >= 0) ordered.push(pool[p1]);
+			for (p2 = 0; p2 < pool.length; p2++) if (baseList.indexOf(pool[p2]) < 0) ordered.push(pool[p2]);
+			var fakeSteps = [];
+			for (var c4 = 0; c4 < ordered.length && fakeSteps.length < 8; c4++) {
+				fakeSteps.push(tagStrategy(stripPayload(wk[ordered[c4]]), fakeSteps.length + 2));
 			}
 			if (!fakeSteps.length) {
-				v4note = '— требует хотя бы одной фейковой ступени (13–16 или 7): на вашем ТСПУ они не прошли';
+				v4note = '— нужны прошедшие строки отчёта кроме базовой: на вашем ТСПУ прошла только строка ' + baseNum;
 			} else {
 				v4 = ['--out-range=-s34228',
 					'--in-range=-s5556',
@@ -842,14 +861,19 @@
 					'--in-range=x',
 					'--payload=tls_client_hello',
 					tagStrategy(stripPayload(baseArgs), 1)].concat(fakeSteps);
-				v4note = 'ступень 1 — ваша база; ступени 2+ — фейковые страховки; сама вернётся на ступень 1';
+				v4note = 'ступень 1 — ваша база; ступени 2+ — все прошедшие строки (сначала базового протокола); сама вернётся на ступень 1';
 			}
 		}
 
 		/* ---------- вывод ---------- */
 		var o = [];
 		o.push('=== ГОТОВЫЕ СТРАТЕГИИ ДЛЯ ZAPRET2 ===');
-		if (parsed.cls) o.push('Класс ТСПУ: ' + parsed.cls);
+		var cls12v = parsed.clsMap ? parsed.clsMap['TLS 1.2'] : null;
+		var cls13v = parsed.clsMap ? parsed.clsMap['TLS 1.3'] : null;
+		if (cls12v && cls13v) {
+			o.push('Класс ТСПУ (TLS 1.2): ' + cls12v);
+			o.push('Класс ТСПУ (TLS 1.3): ' + cls13v);
+		} else if (parsed.cls) o.push('Класс ТСПУ: ' + parsed.cls);
 		var protoSplit = parsed.reco['TLS 1.2'] && parsed.reco['TLS 1.3'] &&
 			parsed.reco['TLS 1.2'] !== parsed.reco['TLS 1.3'];
 		if (protoSplit) {
@@ -857,8 +881,14 @@
 			o.push('надёжнее всего вариант 4 (лестница): ступень 1 стартует с минимальной TLS 1.2,');
 			o.push('при сбоях на TLS 1.3 она сама поднимется на рабочую фейковую ступень.');
 		}
+		var isFlap = parsed.flap && (parsed.flap.tls12 || parsed.flap.tls13);
+		if (isFlap) {
+			o.push('Профиль флапающий: часть попыток получает данные, но не укладывается в таймаут');
+			o.push('(в «Попытки» есть маркеры ~N). Для такого профиля начинайте сразу с варианта 4.');
+		}
 		o.push('');
-		o.push('1. Минимальная (основная) — начните с неё:');
+		if (isFlap) o.push('1. Минимальная (быстрая проверка; основной на этом профиле — вариант 4):');
+		else o.push('1. Минимальная (основная) — начните с неё:');
 		o = o.concat(v1);
 		if (protoSplit) {
 			o.push('   Для TLS 1.3 минимальная — строка ' + parsed.reco['TLS 1.3'] + ':');

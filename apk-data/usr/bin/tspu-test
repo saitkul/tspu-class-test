@@ -72,8 +72,9 @@ do_stop() {
 	kill $(pgrep -f '[t]spu-test _run') 2>/dev/null
 	# Обёртка blockcheck2 на случай, если trap раннера не успел её убить
 	kill $(pgrep -f '[b]lockcheck2.sh') 2>/dev/null
-	# Дать trap-у время вернуть Zapret2 (раннер завершается за 5-6 с: останавливает
-	# blockcheck2 и запускает zapret2); не умер - добить принудительно
+	# Дать trap-у время вернуть Zapret2 (замер dedikar на AX3000: раннер
+	# завершается сам за 5-6 с — trap останавливает blockcheck2 и запускает
+	# zapret2; при 3 с kill -9 приходил посреди этой очистки); не умер - добить
 	i=0
 	while [ $i -lt 12 ] && pid_alive; do sleep 1; i=$((i+1)); done
 	if pid_alive; then

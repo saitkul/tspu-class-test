@@ -661,7 +661,7 @@
 					if (lines[k2].indexOf('КЛАСС ТСПУ') === 0 || lines[k2].indexOf('РЕКОМЕНДАЦИЯ') === 0 || lines[k2].indexOf('=== ') === 0) break;
 				}
 			}
-			var mw2 = lines[i2].match(/^\s*(\d+)\s+\[(TLS 1\.2 и 1\.3|TLS 1\.2|TLS 1\.3)\]:\s+(.+)$/);
+			var mw2 = lines[i2].match(/^\s*(\d+)\s+\[(.+?)\]:\s+(.+)$/);
 			if (mw2) working[parseInt(mw2[1], 10)] = genEscape(mw2[3]);
 		}
 		/* Дедупликация по args: если TLS 1.2 и 1.3 сошлись на одной строке — одна базовая */

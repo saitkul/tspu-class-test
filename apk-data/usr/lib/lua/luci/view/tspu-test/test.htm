@@ -57,8 +57,8 @@
 					<ol style="margin:.4em 0 .2em 1.2em; padding:0">
 						<li>Откройте любое видео YouTube на устройстве за этим роутером.</li>
 						<li>Нажмите F12 → вкладка Network, в фильтр введите: <b>googlevideo</b></li>
-						<li>Наведите курсор на любой запрос <b>videoplayback…</b> — во всплывающей подсказке увидите URL вида https://rr1---sn-xxxx.googlevideo.com/videoplayback</li>
-						<li>Скопируйте первую часть URL до /videoplayback — это узел, например <b>rr1---sn-xxxx.googlevideo.com</b></li>
+						<li>Наведите курсор на любой запрос <b>videoplayback…</b> — во всплывающей подсказке увидите URL вида https://rr1---sn-xxxx.googlevideo.com/videoplayback (узел опознавайте по домену, содержащему <b>.googlevideo.com</b> — форма бывает разной: префикс перед --- не всегда rr и номер бывает двузначным)</li>
+						<li>Скопируйте первую часть URL до /videoplayback — это узел, например <b>rr1---sn-xxxx.googlevideo.com</b> (подойдёт любой домен с .googlevideo.com)</li>
 						<li><b>Запустите отдельный прогон, вписав в поле только этот узел</b> (blockcheck2 принимает один домен за прогон). Если узел сменится в DevTools (rr2, rr5…) — повторите с новым.</li>
 					</ol>
 					<p style="margin:.2em 0">Видеопоток идёт с отдельных узлов googlevideo.com — их ТСПУ может фильтровать жёстче, чем сайт: в DevTools такие обрывы видны как videoplayback … ERR_CONNECTION_ABORTED.</p>
@@ -1004,7 +1004,8 @@
 		o.push('— Видео тормозит, а сайт работает? Сначала попробуйте варианты выше — чаще этого достаточно.');
 		o.push('— Только если не помогло: узел googlevideo тестируется ОТДЕЛЬНЫМ прогоном (в поле домена —');
 		o.push('  только имя узла). Узел: F12 → Network → фильтр videoplayback → правый клик по запросу →');
-		o.push('  Copy → Copy link address — это имя вида rrN---sn-XXXX.googlevideo.com.');
+		o.push('  Copy → Copy link address — узел опознавайте по домену, содержащему .googlevideo.com;');
+		o.push('  форма бывает разной (чаще rrN---sn-XXXX..., но префикс и номер отличаются).');
 		o.push('  Стратегию из отчёта узла добавьте ВТОРОЙ секцией — в её списке доменов укажите этот узел.');
 		elGenOut.value = o.join('\n');
 		elGenOutWrap.style.display = '';

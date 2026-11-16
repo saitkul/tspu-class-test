@@ -232,7 +232,7 @@ END {
     bd = ""
     if (index(st " ", " 20 ") > 0) bd = bd " 20"
     if (index(st " ", " 21 ") > 0) bd = bd " 21"
-    if (bd != "") nt = nt "badsum-пара внутри нарезки + 7-шред прошла (строки" bd ") - механика дробилки: примеси сбивают классификацию ТСПУ, проверено сообществом. "
+    if (bd != "") nt = nt "badsum-пара внутри нарезки + 7-шред прошла (строки" bd ") - механика дробилки: примеси сбивают классификацию ТСПУ. "
     if (index(st " ", " 23 ") > 0) nt = nt "Строка 23 (payload=all) прошла: режется и ответ сервера (двухсторонний десинк) - ломает и классификацию по ServerHello. "
     NT[p] = nt
     # РЕКОМЕНДАЦИЯ: одна минимально достаточная строка по классу
@@ -464,10 +464,10 @@ make_list() {
 # --- 18-19: 7-точечный шред по всем границам SNI (мульти-разрез) ---
 --payload=tls_client_hello --lua-desync=multisplit:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
 --payload=tls_client_hello --lua-desync=multidisorder:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
-# --- 20-21: badsum-фейк внутри нарезки + 7-шред (пара, механика дробилки сообщества) ---
+# --- 20-21: badsum-фейк внутри нарезки + 7-шред (пара, механика дробилки) ---
 --payload=tls_client_hello --lua-desync=multisplit:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=4 --lua-desync=multisplit:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
 --payload=tls_client_hello --lua-desync=multidisorder:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=4 --lua-desync=multidisorder:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
-# --- 22: простой разрез с seqovl=1 (без паттерна, как в лестнице сообщества) ---
+# --- 22: простой разрез с seqovl=1 (без паттерна) ---
 --payload=tls_client_hello --lua-desync=multisplit:pos=1,midsld:seqovl=1
 # --- 23: двухсторонний шред (payload=all - режется и ответ сервера, ServerHello) ---
 --payload=all --lua-desync=multisplit:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1

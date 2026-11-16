@@ -841,9 +841,19 @@
 		var o = [];
 		o.push('=== ГОТОВЫЕ СТРАТЕГИИ ДЛЯ ZAPRET2 ===');
 		if (parsed.cls) o.push('Класс ТСПУ: ' + parsed.cls);
+		var protoSplit = parsed.reco['TLS 1.2'] && parsed.reco['TLS 1.3'] &&
+			parsed.reco['TLS 1.2'] !== parsed.reco['TLS 1.3'];
+		if (protoSplit) {
+			o.push('Внимание: минимальные строки для TLS 1.2 и TLS 1.3 РАЗЛИЧАЮТСЯ —');
+			o.push('надёжнее всего вариант 4 (лестница), ступень 1 которого перекрывает оба протокола.');
+		}
 		o.push('');
 		o.push('1. Минимальная (основная) — начните с неё:');
 		o = o.concat(v1);
+		if (protoSplit) {
+			o.push('   Для TLS 1.3 минимальная — строка ' + parsed.reco['TLS 1.3'] + ':');
+			o.push('   ' + (parsed.working[parsed.reco['TLS 1.3']] || ''));
+		}
 		o.push('');
 		o.push('2. Усиление стабильности (если минимальная иногда сбоит):');
 		if (v2) o = o.concat(v2); else o.push(v2note);

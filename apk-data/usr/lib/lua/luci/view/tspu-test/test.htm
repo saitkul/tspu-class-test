@@ -712,6 +712,13 @@
 			if (st12.length && st13.length) return st12.indexOf(n) >= 0 && st13.indexOf(n) >= 0;
 			return st12.indexOf(n) >= 0 || st13.indexOf(n) >= 0;
 		}
+		function protoNote(n) {
+			/* пометка протокола для строк, прошедших не на обеих версиях TLS */
+			if (stableBoth(n)) return '';
+			if (st12.indexOf(n) >= 0 && st13.indexOf(n) < 0) return ', прошла только на TLS 1.2';
+			if (st13.indexOf(n) >= 0 && st12.indexOf(n) < 0) return ', прошла только на TLS 1.3';
+			return '';
+		}
 		function stripPayload(args) {
 			return args.replace(/^--payload=\S+\s+/, '');
 		}
@@ -768,7 +775,7 @@
 				if (n2 === baseNum || stable.indexOf(n2) < 0 || !wk[n2]) continue;
 				if (n2 === 4) { v2 = withPreamble(wk[4]).slice(0, 2); v2.push('--lua-desync=multidisorder:pos=1,midsld-1,midsld'); v2note = 'три разреза: ведущий байт, левее середины и середина'; }
 				else if (n2 === 2) { v2 = withPreamble(wk[2]).slice(0, 2); v2.push('--lua-desync=multisplit:pos=midsld-1,midsld'); v2note = 'два разреза: левее середины и середина'; }
-				else { v2 = withPreamble(wk[n2]); v2note = 'строка ' + n2 + ' отчёта'; }
+				else { v2 = withPreamble(wk[n2]); v2note = 'строка ' + n2 + ' отчёта' + protoNote(n2); }
 			}
 			if (!v2) v2note = '— на вашем ТСПУ другие механизмы нарезки не прошли';
 		}
@@ -804,8 +811,10 @@
 						v3 = withPreamble(baseArgs).concat([fakeLine]);
 						v3note = 'порядок «разрез → фейк» (голый фейк из строки ' + fakeNum + ')';
 					} else {
-						v3 = withPreamble(fakeLine);
-						v3note = 'прошедшая строка ' + fakeNum + ' отчёта (взята как есть)';
+						/* берём строку ЦЕЛИКОМ (с --payload=): без payload-профиля
+						   lua-desync не привязывается к TLS hello и не сработает */
+						v3 = withPreamble(wk[fakeNum]);
+						v3note = 'прошедшая строка ' + fakeNum + ' отчёта (взята как есть' + protoNote(fakeNum) + ')';
 					}
 				}
 			}
@@ -845,7 +854,8 @@
 			parsed.reco['TLS 1.2'] !== parsed.reco['TLS 1.3'];
 		if (protoSplit) {
 			o.push('Внимание: минимальные строки для TLS 1.2 и TLS 1.3 РАЗЛИЧАЮТСЯ —');
-			o.push('надёжнее всего вариант 4 (лестница), ступень 1 которого перекрывает оба протокола.');
+			o.push('надёжнее всего вариант 4 (лестница): ступень 1 стартует с минимальной TLS 1.2,');
+			o.push('при сбоях на TLS 1.3 она сама поднимется на рабочую фейковую ступень.');
 		}
 		o.push('');
 		o.push('1. Минимальная (основная) — начните с неё:');

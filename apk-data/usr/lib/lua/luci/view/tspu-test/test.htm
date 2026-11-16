@@ -661,8 +661,8 @@
 			var ms13 = lines[i2].match(/^tls13 стабильно:\s*([^|]+)/);
 			if (ms13) { var t13 = ms13[1].match(/\d+/g) || []; stable.tls13 = t13.map(Number); lastProto = 'tls13'; }
 			/* slow-path: строки «попытки (строка:…) k:ok/tot~N» — ~N = данные шли, но не успели */
-			var ma = lines[i2].match(/^Попытки (TLS 1\.[23]) \(строка/);
-			var mi = lines[i2].match(/^\s*попытки \(строка/);
+			var ma = lines[i2].match(/^Попытки (TLS 1\.[23]) .строка/);
+			var mi = lines[i2].match(/^\s*попытки .строка/);
 			if (ma || mi) {
 				var protoKey = ma ? (ma[1] === 'TLS 1.2' ? 'tls12' : 'tls13') : lastProto;
 				if (protoKey) {

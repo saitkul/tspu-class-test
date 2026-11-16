@@ -529,11 +529,14 @@
 	function genEscape(s) { return (s || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(); }
 
 	function genParse(text) {
-		/* Возвращает { base, alts, cls, reco, stable, working }
+		/* Возвращает { base, alts, cls, reco, stable, working, baseNum }
 		   Источники: JSON *_check.json blockcheckw; текст «Рабочие стратегии»
-		   blockcheckw; ИТОГ/ОТЧЁТ TSPU test (все форматы — детерминированные). */
+		   blockcheckw; сырой лог blockcheck2 (class_test.log); ИТОГ/ОТЧЁТ
+		   TSPU test. Переменные-аккумуляторы объявлены вверху функции —
+		   ветки разбирают только СВОЙ формат. */
 		var clean = (text || '').replace(/\r/g, '');
 		var base = [], alts = [], cls = '';
+		var reco = {}, stable = { tls12: [], tls13: [] }, working = {}, baseNum = null;
 		var headChar = clean.replace(/^\s+/, '').charAt(0);
 		if (headChar === '{') {
 			var j = null;
@@ -546,6 +549,83 @@
 			return { base: base, alts: alts, cls: '', reco: {}, stable: {}, working: {} };
 		}
 		var lines = clean.split('\n');
+		/* Сырой лог blockcheck2 (class_test.log / short / «Полный лог»):
+		   «- curl_test_https_tls12 ipv4 X : nfqws2 <args>» + попытки.
+		   Стратегия стабильна, если ВСЕ попытки AVAILABLE. Результаты
+		   маппятся в номера строк корпуса — дальше работает общая логика. */
+		if (clean.indexOf('- curl_test_https_') >= 0 &&
+			(clean.indexOf('[attempt') >= 0 || clean.indexOf('UNAVAILABLE code=') >= 0 ||
+			 clean.indexOf('!!!!! AVAILABLE') >= 0)) {
+			var res = { tls12: {}, tls13: {}, http: {} };
+			var rProto = null, rArgs = null, rOk = 0, rTot = 0, rSeen = false;
+			function numForArgs(a) {
+				a = genEscape(a);
+				if (a.indexOf('fakeddisorder') >= 0) return 13;
+				if (a.indexOf('fakedsplit') >= 0) return 14;
+				if (a.indexOf('hostfakesplit') >= 0) return 15;
+				if (a.indexOf('badsum') >= 0) return 16;
+				if (a.indexOf('tcp_md5') >= 0 && a.indexOf('multidisorder') >= 0) return 12;
+				if (a.indexOf('tcp_md5') >= 0 && a.indexOf('multisplit') >= 0) return 11;
+				if (a.indexOf('tls_mod') >= 0) return 10;
+				if (a.indexOf('ip_autottl') >= 0) return 8;
+				if (a.indexOf('multidisorder:pos=midsld:seqovl') >= 0) return 6;
+				if (a.indexOf('multisplit:pos=1,midsld:seqovl') >= 0) return 5;
+				if (a.indexOf('multidisorder:pos=1,midsld') >= 0) return 4;
+				if (a.indexOf('multidisorder:pos=midsld') >= 0) return 1;
+				if (a.indexOf('multidisorder:pos=sld') >= 0) return 3;
+				if (a.indexOf('multisplit:pos=1') >= 0) return 17;
+				if (a.indexOf('multisplit:pos=midsld') >= 0) return 2;
+				if (a.indexOf('fake:blob') >= 0) return 7;
+				return 0;
+			}
+			function flushR() {
+				if (!rArgs || !rProto || rTot <= 0) return;
+				var num = numForArgs(rArgs);
+				if (num <= 0) return;
+				if (rOk === rTot && res[rProto][num] === undefined) res[rProto][num] = rArgs;
+			}
+			for (var ri = 0; ri < lines.length; ri++) {
+				var rl = lines[ri];
+				var rm = rl.match(/^- curl_test_https_(tls12|tls13|http) ipv4 \S+ : nfqws2 (.+)$/);
+				if (rm) {
+					flushR();
+					rProto = rm[1]; rArgs = genEscape(rm[2]); rOk = 0; rTot = 0; rSeen = false;
+					continue;
+				}
+				if (!rArgs) continue;
+				if (rl.indexOf('[attempt') === 0) {
+					if (rSeen === false) { rSeen = true; rOk = 0; rTot = 0; }
+					rTot++;
+					if (rl.indexOf('AVAILABLE') >= 0) rOk++;
+					continue;
+				}
+				if (rSeen) continue; /* итоговая строка после попыток — попытки уже учтены */
+				if (rl.indexOf('!!!!! AVAILABLE') === 0) { rTot++; rOk++; continue; }
+				if (rl.indexOf('UNAVAILABLE') === 0) { rTot++; continue; }
+			}
+			flushR();
+			/* стабильно = прошёл на ОБЕИХ версиях TLS (или на единственной имеющейся) */
+			var both = {};
+			for (var rn = 1; rn <= 17; rn++) {
+				var a12 = res.tls12[rn], a13 = res.tls13[rn];
+				if ((a12 && a13 && a12 === a13) || (a12 && !a13 && res.tls13 && Object.keys(res.tls13).length === 0)) both[rn] = a12;
+				else if (a13 && !a12 && res.tls12 && Object.keys(res.tls12).length === 0) both[rn] = a13;
+				else if (a12 && a13 && a12 === a13) both[rn] = a12;
+			}
+			/* первый стабильный по корпусному приоритету — база */
+			var rawNums = [];
+			for (var rn2 = 1; rn2 <= 17; rn2++) if (both[rn2] !== undefined) rawNums.push(rn2);
+			var rawBase = rawNums.length ? rawNums[0] : null;
+			var w2 = {};
+			for (var rn3 in both) w2[parseInt(rn3, 10)] = both[rn3];
+			if (rawBase && !base.length) base = [{ proto: '', args: w2[rawBase] }];
+			if (!baseNum && rawBase) baseNum = rawBase;
+			for (var rn4 in w2) working[parseInt(rn4, 10)] = w2[rn4];
+			alts = rawNums.filter(function (n) { return n !== rawBase; }).slice(0, 2)
+				.map(function (n) { return { args: w2[n], note: 'строка ' + n }; });
+			stable = { tls12: rawNums, tls13: rawNums };
+			return { base: base, alts: alts, cls: '', reco: {}, stable: stable, working: working, baseNum: baseNum };
+		}
 		/* blockcheckw текст: «=== Рабочие стратегии {proto} (n) ===» + «  #k nfqws2 args» */
 		var curProto = null, bw = false;
 		for (var i = 0; i < lines.length; i++) {
@@ -565,7 +645,6 @@
 			return { base: base, alts: alts, cls: '', reco: {}, stable: {}, working: {} };
 		}
 		/* TSPU test: вердикт + РЕКОМЕНДАЦИЯ + стабильно-списки + «Рабочие стратегии» */
-		var reco = {}, stable = { tls12: [], tls13: [] }, working = {};
 		for (var i2 = 0; i2 < lines.length; i2++) {
 			var mv = lines[i2].match(/^КЛАСС ТСПУ \((TLS 1\.[23])\): ([^—]*)/);
 			if (mv && !cls) cls = mv[2].replace(/\s*$/, '');
@@ -694,7 +773,9 @@
 			if (!v2) v2note = '— на вашем ТСПУ другие механизмы нарезки не прошли';
 		}
 
-		/* --- Вариант 3: Оптимальная с фейком (разрез → фейк) --- */
+		/* --- Вариант 3: Оптимальная с фейком — прошедшая строка КАК ЕСТЬ.
+		   Синтез «база + фейк» только для голого фейка (7/10): иначе
+		   получилась бы нетестируемая комбинация (двойная нарезка) --- */
 		var v3 = null, v3note = '';
 		if (!isTspu) {
 			v3note = '— доступен по отчёту TSPU test (нужны номера строк)';
@@ -703,9 +784,8 @@
 			if (!fakeOk.length) {
 				v3note = '— фейковые компоненты на вашем ТСПУ отсекаются (строки 7–16 не прошли)';
 			} else {
-				var v3lines = withPreamble(baseArgs);
 				var fakeLine = null, fakeNum = 0;
-				var order3 = [10, 7, 12, 11, 16, 13, 14, 15];
+				var order3 = [13, 14, 15, 12, 11, 16, 10, 7];
 				for (var c3 = 0; c3 < order3.length && !fakeLine; c3++) {
 					var n3 = order3[c3];
 					if (stable.indexOf(n3) >= 0 && wk[n3] && n3 !== baseNum) {
@@ -714,13 +794,20 @@
 					}
 				}
 				if (!fakeLine) {
+					v3 = withPreamble(baseArgs);
 					v3note = 'ваша базовая уже содержит фейк (класс L2)';
 				} else {
-					if (fakeLine.indexOf(':repeats=') < 0) fakeLine = fakeLine + ':repeats=2';
-					v3lines.push(fakeLine);
-					v3note = 'порядок «разрез → фейк» (строка ' + fakeNum + ' отчёта)';
+					var isBareFake = fakeLine.indexOf('--lua-desync=fake:') === 0 &&
+					                 fakeLine.indexOf(' --lua-desync=') < 0;
+					if (isBareFake) {
+						if (fakeLine.indexOf(':repeats=') < 0) fakeLine = fakeLine + ':repeats=2';
+						v3 = withPreamble(baseArgs).concat([fakeLine]);
+						v3note = 'порядок «разрез → фейк» (голый фейк из строки ' + fakeNum + ')';
+					} else {
+						v3 = withPreamble(fakeLine);
+						v3note = 'прошедшая строка ' + fakeNum + ' отчёта (взята как есть)';
+					}
 				}
-				v3 = v3lines;
 			}
 		}
 
@@ -793,12 +880,18 @@
 		xhr(U_LOG, function (t) {
 			var clean = (t || '').replace(/\r/g, '');
 			var s = clean.indexOf('=== ИТОГ');
+			var e = clean.indexOf('=== конец отчёта ===');
 			if (s < 0) {
 				elGenStatus.textContent = 'Отчёт ещё не сформирован — запустите тест на вкладке «Тест»';
 				return;
 			}
-			var e = clean.indexOf('=== конец отчёта ===');
-			var end = (e >= 0) ? e + '=== конец отчёта ==='.length : clean.length;
+			/* Защита от раннего нажатия: ИТОГ печатается сразу после blockcheck2,
+			   а полный отчёт (с «Рабочими стратегиями») — на несколько секунд позже */
+			if (e < 0 || e < s) {
+				elGenStatus.textContent = 'Тест ещё завершается (формируется отчёт) — подождите пару секунд и нажмите снова';
+				return;
+			}
+			var end = e + '=== конец отчёта ==='.length;
 			elGenInput.value = clean.substring(s, end);
 			elGenStatus.textContent = 'Отчёт последнего теста вставлен. Нажмите «Сгенерировать стратегии».';
 		});

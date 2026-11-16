@@ -64,12 +64,14 @@ rm -rf /tmp/luci-modulecache/ 2>/dev/null
 /etc/init.d/rpcd reload 2>/dev/null
 # уничтожить ВСЕ сессии LuCI через ubus (как выход из LuCI): мгновенно и
 # синхронно, без рестарта rpcd и без гонки с логином - панель сразу просит свежий вход
+ok=0
 for sid in $(ubus call session list 2>/dev/null | grep -oE '"[^"]+"' | tr -d '"'); do
-	ubus call session destroy '{"ubus_rpc_session":"'"$sid"'"}' >/dev/null 2>&1
+	ubus call session destroy '{"ubus_rpc_session":"'"$sid"'"}' >/dev/null 2>&1 && ok=1
 done
+[ "$ok" = "1" ] || /etc/init.d/rpcd restart 2>/dev/null
 
 echo
-echo "Установлено. Все сессии панели LuCI завершены - войдите заново"
+echo "Установлено. Сессии панели LuCI завершены - войдите заново"
 echo "(обязательная деавторизация после установки luci-приложения)."
 echo "После входа: LuCI -> Службы -> TSPU test."
 echo "Требуется установленный Zapret2 в /opt/zapret2 (с blockcheck2.sh) и curl."

@@ -710,6 +710,20 @@
 		try { parsed = genParse(raw); }
 		catch (err) { elGenStatus.textContent = 'Ошибка разбора: ' + err; return; }
 		if (!parsed.base.length) {
+			if (parsed.flap && (parsed.flap.tls12 || parsed.flap.tls13)) {
+				var tf = ['=== ГОТОВЫЕ СТРАТЕГИИ ДЛЯ ZAPRET2 ===',
+					'Рабочих строк в отчёте нет, но профиль флапающий (данные идут, но не успевают).',
+					'На таком профиле основной — шаблон сообщества (механика проверена на RR 25.12.6):',
+					''];
+				tf = tf.concat(communityTemplate());
+				tf.push('');
+				tf.push('— Профиль для шаблона: TCP, порт 443, БЕЗ фильтра L7.');
+				tf.push('— Также попробуйте повторить тест с ожиданием 8 с и повторами 5.');
+				elGenOut.value = tf.join('\n');
+				elGenOutWrap.style.display = '';
+				elGenStatus.textContent = 'Рабочих строк нет, но профиль флапающий — выдан шаблон сообщества.';
+				return;
+			}
 			elGenStatus.textContent = 'В отчёте нет рабочих стратегий. Проверьте, что вставлен блок ИТОГ/ОТЧЁТ целиком.';
 			elGenOutWrap.style.display = 'none';
 			return;
@@ -734,6 +748,21 @@
 		}
 		function stripPayload(args) {
 			return args.replace(/^--payload=\S+\s+/, '');
+		}
+		function communityTemplate() {
+			/* лестница сообщества: подтверждена на флапающих ТСПУ RR 25.12.6 (Gomer, 2026-11-16).
+			   badsum-фейк внутри нарезки, 7 разрезов по границам SNI, payload=all, быстрый circular */
+			return ['--out-range=-s34228',
+				'--payload=all',
+				'--in-range=-s5556',
+				'--lua-desync=circular:fails=2:time=60:retrans=2:nld=2:reset',
+				'--in-range=x',
+				'--lua-desync=multisplit:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=4:strategy=1',
+				'--lua-desync=multisplit:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1:strategy=1',
+				'--lua-desync=multidisorder:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=4:strategy=2',
+				'--lua-desync=multidisorder:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1:strategy=2',
+				'--lua-desync=multidisorder:pos=1,midsld:seqovl=1:strategy=3',
+				'--lua-desync=multisplit:pos=1,midsld:seqovl=1:strategy=4'];
 		}
 		function withPreamble(args) {
 			var l = ['--out-range=-s34228'];
@@ -906,6 +935,13 @@
 		o.push('4. Лестница-страховка (сама повышает ступень при блокировках и возвращается):');
 		if (v4) o = o.concat(v4); else o.push(v4note);
 		if (v4note && v4) o.push('   (' + v4note + ')');
+		if (isFlap) {
+			o.push('');
+			o.push('5. Шаблон сообщества (механика НЕ из вашего отчёта — подтверждена на похожих флапающих ТСПУ, RR 25.12.6):');
+			o = o.concat(communityTemplate());
+			o.push('   (профиль для шаблона: TCP, порт 443, БЕЗ фильтра L7; badsum-фейк дешевле tcp_md5,');
+			o.push('    7 разрезов покрывают все границы SNI, circular быстрее восстанавливается: time=60)');
+		}
 		o.push('');
 		o.push('— Как применить: скопируйте выбранный вариант ЦЕЛИКОМ в поле script');
 		o.push('  профиля Zapret2 (многострочно — так и нужно), или секцией:');

@@ -1,40 +1,72 @@
 #!/bin/sh
 # ============================================================
-#  luci-app-tspu-test - универсальная установка (OpenWrt 23.05/24.10/25.x)
-#  Использование: положите рядом install.sh и data.zip (или распакованную
-#  папку data/), затем:  sh install.sh
+#  luci-app-tspu-test - установка на OpenWrt 23.05/24.x (opkg)
+#  и 25.x (apk). Скрипт сам определяет менеджер пакетов и ищет
+#  подходящий пакет в своей папке или в /tmp.
+#
+#  Использование: положите рядом install.sh и пакет (.ipk или .apk),
+#  затем:  sh install.sh
+#  Без пакета скрипт скачает его из GitHub Releases (нужен интернет).
 # ============================================================
-set -e
-
-DIR=$(cd "$(dirname "$0")" && pwd)
-
 [ "$(id -u)" = "0" ] || { echo "Запустите от root"; exit 1; }
 
-if [ ! -d "$DIR/data" ]; then
-  echo "Распаковываю data.zip..."
-  command -v unzip >/dev/null 2>&1 && unzip -o "$DIR/data.zip" -d "$DIR" || {
-    echo "unzip не найден: выполните на ПК: data.zip -> data/ рядом с install.sh"; exit 1; }
+REPO="https://github.com/saitkul/tspu-class-test/releases/latest/download"
+PKG="luci-app-tspu-test"
+
+# --- 1. Определить менеджер пакетов (command -v даёт полный путь) ---
+PKG_MGR=""
+if command -v opkg >/dev/null 2>&1; then
+    PKG_MGR="opkg"
+elif command -v apk >/dev/null 2>&1; then
+    PKG_MGR="apk"
 fi
 
-[ -d "$DIR/data" ] || { echo "Не найдена папка data/"; exit 1; }
-
-echo "Копирую файлы..."
-cp -r "$DIR/data/." / 2>/dev/null || {
-  mkdir -p /usr/bin /usr/share/luci/menu.d /usr/share/rpcd/acl.d \
-           /usr/lib/lua/luci/controller /usr/lib/lua/luci/view/tspu-test
-  cp "$DIR/data/usr/bin/tspu-test" /usr/bin/tspu-test
-  cp "$DIR/data/usr/share/luci/menu.d/luci-app-tspu-test.json" /usr/share/luci/menu.d/luci-app-tspu-test.json
-  cp "$DIR/data/usr/share/rpcd/acl.d/luci-app-tspu-test.json" /usr/share/rpcd/acl.d/luci-app-tspu-test.json
-  cp "$DIR/data/usr/lib/lua/luci/controller/tspu-test.lua" /usr/lib/lua/luci/controller/tspu-test.lua
-  cp "$DIR/data/usr/lib/lua/luci/view/tspu-test/test.htm" /usr/lib/lua/luci/view/tspu-test/test.htm
+# --- 2. Найти пакет: локально рядом или в /tmp ---
+find_pkg() {
+    for f in "$DIR"/*all.ipk "$DIR"/*noarch.apk /tmp/$PKG*.ipk /tmp/$PKG*.apk; do
+        [ -f "$f" ] && { echo "$f"; return 0; }
+    done
+    return 1
 }
-chmod 755 /usr/bin/tspu-test
-chmod 644 /usr/share/luci/menu.d/luci-app-tspu-test.json /usr/share/rpcd/acl.d/luci-app-tspu-test.json
-chmod 644 /usr/lib/lua/luci/controller/tspu-test.lua /usr/lib/lua/luci/view/tspu-test/test.htm
 
-[ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd restart >/dev/null 2>&1
+DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
+PKG_FILE=$(find_pkg)
+
+if [ -z "$PKG_FILE" ]; then
+    VER=$(command -v curl >/dev/null 2>&1 && \
+          curl -sL -o /dev/null -w '%{url_effective}' "$REPO" | sed 's|.*/||' || echo "")
+    [ -z "$VER" ] && VER="$PKG"
+    EXT="ipk"; [ "$PKG_MGR" = "apk" ] && EXT="apk"
+    echo "Пакета рядом нет. Скачиваю $PKG.$EXT из Releases..."
+    curl -sL -o "/tmp/$PKG.$EXT" "$REPO/$PKG.$EXT" || { echo "Скачивание не удалось"; exit 1; }
+    PKG_FILE="/tmp/$PKG.$EXT"
+fi
+
+# --- 3. Установка ---
+case "$PKG_MGR" in
+    opkg)
+        opkg install --force-reinstall "$PKG_FILE"
+        ;;
+    apk)
+        apk add --allow-untrusted --force-reinstall "$PKG_FILE"
+        ;;
+    *)
+        echo "Не найден ни opkg, ни apk. Установите пакет вручную:" >&2
+        echo "  opkg install /tmp/$PKG.ipk     (OpenWrt 23.05/24.x)" >&2
+        echo "  apk add --allow-untrusted /tmp/$PKG.apk   (OpenWrt 25.x)" >&2
+        exit 1
+        ;;
+esac
+
+# --- 4. Сброс кэша LuCI и ГАРАНТИРОВАННАЯ деавторизация ---
+rm -f /tmp/luci-indexcache* 2>/dev/null
+rm -rf /tmp/luci-modulecache/ 2>/dev/null
+# rpcd перезапускается отложенно: установка завершается, затем сессии LuCI
+# умирают - панель перезагружается и просит свежий вход (обязательно после установки)
+(sleep 3; /etc/init.d/rpcd restart 2>/dev/null) >/dev/null 2>&1 &
 
 echo
-echo "Установлено. Откройте LuCI -> Службы -> TSPU test."
-echo "Если пункта нет - перелогиньтесь в LuCI или обновите страницу (Ctrl+F5)."
-echo "Требуется установленный Zapret2 в /opt/zapret2 и curl."
+echo "Установлено. Панель LuCI перезагрузится и попросит войти заново -"
+echo "это обязательная деавторизация после установки luci-приложения."
+echo "После входа: LuCI -> Службы -> TSPU test."
+echo "Требуется установленный Zapret2 в /opt/zapret2 (с blockcheck2.sh) и curl."

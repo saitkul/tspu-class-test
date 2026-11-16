@@ -875,15 +875,21 @@
 			v4note = '— доступен по отчёту TSPU test (нужны номера строк)';
 		} else {
 			/* ступени лестницы: ВСЕ прошедшие строки отчёта — сначала стабильные
-			   на протоколе базы, затем остальные (лимит 9 ступеней с базой) */
+			   на протоколе базы, затем остальные; внутри групп — по REC-приоритету
+			   (не по номеру: иначе кап 8 вытесняет новые комбо-строки 18-23);
+			   лимит 9 ступеней с базой — практика сообщества */
+			var priOrd = [1, 4, 6, 5, 22, 17, 2, 18, 19, 20, 21, 11, 12, 13, 14, 15, 16, 23, 7, 8, 9, 10, 3];
+			function priRank(nn) { var r = priOrd.indexOf(nn); return r < 0 ? 99 : r; }
 			var baseList = st12.indexOf(baseNum) >= 0 ? st12 : st13;
-			var pool = [], ordered = [], p1, p2;
+			var pool = [], g1 = [], g2 = [], p1, p2;
 			for (var n4 = 1; n4 <= 23; n4++) {
 				if (n4 === baseNum || stable.indexOf(n4) < 0 || !wk[n4]) continue;
 				pool.push(n4);
 			}
-			for (p1 = 0; p1 < pool.length; p1++) if (baseList.indexOf(pool[p1]) >= 0) ordered.push(pool[p1]);
-			for (p2 = 0; p2 < pool.length; p2++) if (baseList.indexOf(pool[p2]) < 0) ordered.push(pool[p2]);
+			for (p1 = 0; p1 < pool.length; p1++) (baseList.indexOf(pool[p1]) >= 0 ? g1 : g2).push(pool[p1]);
+			g1.sort(function (a, b) { return priRank(a) - priRank(b); });
+			g2.sort(function (a, b) { return priRank(a) - priRank(b); });
+			var ordered = g1.concat(g2);
 			var fakeSteps = [];
 			for (var c4 = 0; c4 < ordered.length && fakeSteps.length < 8; c4++) {
 				fakeSteps.push(tagStrategy(stripPayload(wk[ordered[c4]]), fakeSteps.length + 2));
@@ -897,8 +903,36 @@
 					'--in-range=x',
 					'--payload=tls_client_hello',
 					tagStrategy(stripPayload(baseArgs), 1)].concat(fakeSteps);
-				v4note = 'ступень 1 — ваша база; ступени 2+ — все прошедшие строки (сначала базового протокола); сама вернётся на ступень 1';
+				v4note = 'ступень 1 — ваша база; ступени 2+ — все прошедшие строки по приоритету; сама вернётся на ступень 1';
 			}
+		}
+
+		/* --- Вариант 5: Дробилка — прошедшие строки пользователя в рамке дробилки сообщества --- */
+		var v5 = null, v5note = '';
+		if (!isTspu) {
+			v5note = '— доступен по отчёту TSPU test (нужны номера строк)';
+		} else {
+			var min13 = parsed.reco['TLS 1.3'] && parsed.reco['TLS 1.3'] !== baseNum ? parsed.reco['TLS 1.3'] : null;
+			var cand5 = [];
+			var pref5 = [20, 21, 19, 18, 22, 23];
+			for (var q5 = 0; q5 < pref5.length; q5++) {
+				if (pref5[q5] !== baseNum && stable.indexOf(pref5[q5]) >= 0 && wk[pref5[q5]]) cand5.push(pref5[q5]);
+			}
+			if (min13 && stable.indexOf(min13) >= 0 && wk[min13] && cand5.indexOf(min13) < 0) cand5.push(min13);
+			for (var q6 = 0; q6 < ordered.length && cand5.length < 4; q6++) {
+				if (cand5.indexOf(ordered[q6]) < 0) cand5.push(ordered[q6]);
+			}
+			var steps5 = [];
+			for (var c5 = 0; c5 < cand5.length && steps5.length < 4; c5++) {
+				steps5.push(tagStrategy(stripPayload(wk[cand5[c5]]), steps5.length + 2));
+			}
+			v5 = ['--out-range=-s34228',
+				'--payload=all',
+				'--in-range=-s5556',
+				'--lua-desync=circular:fails=2:time=60:retrans=2:nld=2:reset',
+				'--in-range=x',
+				tagStrategy(stripPayload(baseArgs), 1)].concat(steps5);
+			v5note = 'ваш набор в рамке дробилки: payload=all режет и ответ сервера, быстрый circular';
 		}
 
 		/* ---------- вывод ---------- */
@@ -920,10 +954,10 @@
 		var isFlap = parsed.flap && (parsed.flap.tls12 || parsed.flap.tls13);
 		if (isFlap) {
 			o.push('Профиль флапающий: часть попыток получает данные, но не укладывается в таймаут');
-			o.push('(в «Попытки» есть маркеры ~N). Для такого профиля начинайте сразу с варианта 4.');
+			o.push('(в «Попытки» есть маркеры ~N). Для такого профиля начинайте сразу с варианта 5 или 4.');
 		}
 		o.push('');
-		if (isFlap) o.push('1. Минимальная (быстрая проверка; основной на этом профиле — вариант 4):');
+		if (isFlap) o.push('1. Минимальная (быстрая проверка; основной на этом профиле — вариант 5 или 4):');
 		else o.push('1. Минимальная (основная) — начните с неё:');
 		o = o.concat(v1);
 		if (protoSplit) {
@@ -942,14 +976,16 @@
 		o.push('4. Лестница-страховка (сама повышает ступень при блокировках и возвращается):');
 		if (v4) o = o.concat(v4); else o.push(v4note);
 		if (v4note && v4) o.push('   (' + v4note + ')');
-		if (isFlap) {
-			o.push('');
-			o.push('5. Шаблон сообщества (механика НЕ из вашего отчёта — подтверждена на похожих флапающих ТСПУ, RR 25.12.6):');
-			o = o.concat(communityTemplate());
-			o.push('   (профиль для шаблона: TCP, порт 443, БЕЗ фильтра L7; payload=all режет и ответ');
-			o.push('    сервера (ServerHello), badsum-примеси сбивают классификацию ТСПУ,');
-			o.push('    7 разрезов бьют ресборку в семь точек, circular восстанавливается за 60 с)');
-		}
+		o.push('');
+		o.push('5. Дробилка (ваши прошедшие строки в рамке дробилки сообщества):');
+		if (v5) o = o.concat(v5); else o.push(v5note);
+		if (v5note && v5) o.push('   (' + v5note + ')');
+		o.push('');
+		o.push('6. Шаблон сообщества (полностью проверенная лестница — универсальная):');
+		o = o.concat(communityTemplate());
+		o.push('   (профиль для шаблона: TCP, порт 443, БЕЗ фильтра L7; payload=all режет и ответ');
+		o.push('    сервера, badsum-примеси сбивают классификацию ТСПУ,');
+		o.push('    7 разрезов бьют ресборку в семь точек, circular восстанавливается за 60 с)');
 		o.push('');
 		o.push('— Как применить: скопируйте выбранный вариант ЦЕЛИКОМ в поле script');
 		o.push('  профиля Zapret2 (многострочно — так и нужно), или секцией:');

@@ -560,10 +560,17 @@
 			var rProto = null, rArgs = null, rOk = 0, rTot = 0, rSeen = false;
 			function numForArgs(a) {
 				a = genEscape(a);
+				if (a.indexOf('--payload=all') >= 0) return 23;
+				if (a.indexOf('multisplit:blob') >= 0) return 20;
+				if (a.indexOf('multidisorder:blob') >= 0) return 21;
+				if (a.indexOf('multisplit:pos=1,sniext') >= 0) return 18;
+				if (a.indexOf('multidisorder:pos=1,sniext') >= 0) return 19;
+				if (a.indexOf('multisplit:pos=1,midsld:seqovl=1') >= 0) return 22;
 				if (a.indexOf('fakeddisorder') >= 0) return 13;
 				if (a.indexOf('fakedsplit') >= 0) return 14;
 				if (a.indexOf('hostfakesplit') >= 0) return 15;
-				if (a.indexOf('badsum') >= 0) return 16;
+				if (a.indexOf('badsum') >= 0 && a.indexOf('multidisorder') >= 0) return 16;
+				if (a.indexOf('badsum') >= 0) return 9;
 				if (a.indexOf('tcp_md5') >= 0 && a.indexOf('multidisorder') >= 0) return 12;
 				if (a.indexOf('tcp_md5') >= 0 && a.indexOf('multisplit') >= 0) return 11;
 				if (a.indexOf('tls_mod') >= 0) return 10;
@@ -607,7 +614,7 @@
 			flushR();
 			/* стабильно = прошёл на ОБЕИХ версиях TLS (или на единственной имеющейся) */
 			var both = {};
-			for (var rn = 1; rn <= 17; rn++) {
+			for (var rn = 1; rn <= 23; rn++) {
 				var a12 = res.tls12[rn], a13 = res.tls13[rn];
 				if ((a12 && a13 && a12 === a13) || (a12 && !a13 && res.tls13 && Object.keys(res.tls13).length === 0)) both[rn] = a12;
 				else if (a13 && !a12 && res.tls12 && Object.keys(res.tls12).length === 0) both[rn] = a13;
@@ -615,7 +622,7 @@
 			}
 			/* первый стабильный по корпусному приоритету — база */
 			var rawNums = [];
-			for (var rn2 = 1; rn2 <= 17; rn2++) if (both[rn2] !== undefined) rawNums.push(rn2);
+			for (var rn2 = 1; rn2 <= 23; rn2++) if (both[rn2] !== undefined) rawNums.push(rn2);
 			var rawBase = rawNums.length ? rawNums[0] : null;
 			var w2 = {};
 			for (var rn3 in both) w2[parseInt(rn3, 10)] = both[rn3];
@@ -795,13 +802,13 @@
 		var stable = [];
 		if (isTspu) {
 			var both = [];
-			for (var n = 1; n <= 17; n++) if (stableBoth(n)) both.push(n);
+			for (var n = 1; n <= 23; n++) if (stableBoth(n)) both.push(n);
 			stable = both;
 			if (!stable.length) { /* протоколы разошлись — берём объединение */ 
-				for (var m = 1; m <= 17; m++) if (st12.indexOf(m) >= 0 || st13.indexOf(m) >= 0) stable.push(m);
+				for (var m = 1; m <= 23; m++) if (st12.indexOf(m) >= 0 || st13.indexOf(m) >= 0) stable.push(m);
 			}
 		}
-		function hasFake(num) { return num >= 7 && num <= 16; }
+		function hasFake(num) { return (num >= 7 && num <= 16) || num === 20 || num === 21; }
 
 		/* --- Вариант 1: Минимальная (основная) — рекомендованная строка --- */
 		var v1 = withPreamble(baseArgs);
@@ -811,7 +818,7 @@
 		if (!isTspu) {
 			v2 = null; v2note = '— доступен по отчёту TSPU test (нужны номера строк)';
 		} else {
-			var cands2 = [4, 6, 5, 2, 17, 3, 12, 16, 13, 14, 15, 11];
+			var cands2 = [4, 6, 5, 22, 2, 17, 18, 19, 3, 12, 16, 13, 14, 15, 11];
 			for (var c2 = 0; c2 < cands2.length && !v2; c2++) {
 				var n2 = cands2[c2];
 				if (n2 === baseNum || stable.indexOf(n2) < 0 || !wk[n2]) continue;
@@ -834,7 +841,7 @@
 				v3note = '— фейковые компоненты на вашем ТСПУ отсекаются (строки 7–16 не прошли)';
 			} else {
 				var fakeLine = null, fakeNum = 0;
-				var order3 = [13, 14, 15, 12, 11, 16, 10, 7];
+				var order3 = [13, 14, 20, 21, 15, 12, 11, 16, 10, 7];
 				for (var c3 = 0; c3 < order3.length && !fakeLine; c3++) {
 					var n3 = order3[c3];
 					if (stable.indexOf(n3) >= 0 && wk[n3] && n3 !== baseNum) {
@@ -871,7 +878,7 @@
 			   на протоколе базы, затем остальные (лимит 9 ступеней с базой) */
 			var baseList = st12.indexOf(baseNum) >= 0 ? st12 : st13;
 			var pool = [], ordered = [], p1, p2;
-			for (var n4 = 1; n4 <= 17; n4++) {
+			for (var n4 = 1; n4 <= 23; n4++) {
 				if (n4 === baseNum || stable.indexOf(n4) < 0 || !wk[n4]) continue;
 				pool.push(n4);
 			}

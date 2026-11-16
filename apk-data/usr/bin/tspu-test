@@ -3,7 +3,7 @@
 #  TSPU test - CLI-ядро приложения luci-app-tspu-test
 #  Запуск «класс-теста ТСПУ» (ядро tspu-class-test v2.2) через
 #  blockcheck2 из /opt/zapret2. Определяет, какие механики
-#  десинхронизации пропускает ТСПУ провайдера (17 стратегий,
+#  десинхронизации пропускает ТСПУ провайдера (23 стратегии,
 #  TLS 1.2 + 1.3, SCANLEVEL=force), печатает вердикт «КЛАСС ТСПУ».
 #
 #  Команды:
@@ -118,7 +118,7 @@ do_run() {
 	A=$AWKF
 	L=/tmp/class_test.log
 	RFULL=/tmp/class_report.txt
-	SCRIPT_VER="TSPU test @APP_VERSION@ (ядро tspu-class-test v2.4): 17 стратегий, SCANLEVEL=force"
+	SCRIPT_VER="TSPU test @APP_VERSION@ (ядро tspu-class-test v2.4): 23 стратегии, SCANLEVEL=force"
 
 	echo $$ > "$PIDF"
 
@@ -193,12 +193,14 @@ END {
     S[p] = st; F[p] = fl; M[p] = sl; D[p] = det
     # Вердикт класса ТСПУ. Техника и фулинг разделены: 1-6 - нарезка без фейков,
     # 7-10 - голый фейк с разными фулингами (md5/ttl/badsum/SNI), 11-16 - фейк + нарезка,
-    # 17 - двухпакетный hello (имитация kyber-браузера).
+    # 17 - двухпакетный hello (имитация kyber-браузера), 18-19 - 7-точечный шред,
+    # 20-21 - badsum-фейк внутри нарезки (механика дробилки), 22 - seqovl=1,
+    # 23 - двухсторонний шред (payload=all - режется и ответ сервера).
     dis = ""; spl = ""; fk = ""; cb = ""; cut = ""
-    for (k = 1; k <= 17; k++) if (index(st " ", " " k " ") > 0) {
-      if (k <= 6 || k == 17) cut = cut " " k
-      if (k == 1 || k == 4 || k == 6) dis = dis " " k
-      else if (k == 2 || k == 5 || k == 17) spl = spl " " k
+    for (k = 1; k <= 23; k++) if (index(st " ", " " k " ") > 0) {
+      if (k <= 6 || k == 17 || k == 18 || k == 19 || k == 22 || k == 23) cut = cut " " k
+      if (k == 1 || k == 4 || k == 6 || k == 19) dis = dis " " k
+      else if (k == 2 || k == 5 || k == 17 || k == 18 || k == 22 || k == 23) spl = spl " " k
       else if (k >= 7 && k <= 10) fk = fk " " k
       else if (k != 3) cb = cb " " k
     }
@@ -223,12 +225,15 @@ END {
     if (index(st " ", " 3 ") > 0 && dis == "") nt = nt "Разрез на границе SLD (3) проходит без внутреннего - годится pos=sld. "
     if (dis != "" && index(st " ", " 3 ") == 0) nt = nt "Разрез на границе SLD (3) не проходит - работают разрезы внутри слова SLD (midsld) и ведущий байт (pos=1,...). "
     if (index(st " ", " 17 ") > 0) nt = nt "Строка 17 (двухпакетный hello) прошла: у браузеров hello двухпакетный (kyber), эта строка ближе всего к браузерному поведению - результат переносится на браузер охотнее однопакетных. "
+    if (index(st " ", " 18 ") > 0 || index(st " ", " 19 ") > 0) nt = nt "Строки 18/19 (7-точечный шред) прошли: разрезы по всем границам SNI сразу - ресборка ТСПУ не может выбрать точку склейки. "
+    if (index(st " ", " 20 ") > 0 || index(st " ", " 21 ") > 0) nt = nt "Строки 20/21 (badsum-фейк внутри нарезки + 7-шред) прошли: механика дробилки - примеси сбивают классификацию ТСПУ, проверено сообществом на флапающих профилях. "
+    if (index(st " ", " 23 ") > 0) nt = nt "Строка 23 (payload=all) прошла: режется и ответ сервера (двухсторонний десинк) - ломает и классификацию по ServerHello. "
     NT[p] = nt
     # РЕКОМЕНДАЦИЯ: одна минимально достаточная строка по классу
     # (L0-/L0 - обратный порядок; аномалия - seqovl/двухпакетный; L2 - комбо; особый - голый фейк)
     rec = ""
-    split("1 4 6 5 17 2 11 12 13 14 15 16 7 8 9 10 3", PRI, " ")
-    for (pi = 1; pi <= 17 && rec == ""; pi++) {
+    split("1 4 6 5 22 17 2 18 19 20 21 11 12 13 14 15 16 23 7 8 9 10 3", PRI, " ")
+    for (pi = 1; pi <= 23 && rec == ""; pi++) {
       rk = PRI[pi]
       if (index(st " ", " " rk " ") > 0) rec = rk
     }
@@ -426,7 +431,7 @@ AWK
 	echo "state=done exitcode=0" > "$STATUS"
 }
 
-# --- 17 стратегий stage1 (v2.3): нарезка / голый фейк / комбинации / двухпакетный hello ---
+# --- 23 стратегии stage1 (v2.5): нарезка / голый фейк / комбинации / двухпакетный hello / комбо дробилки ---
 make_list() {
 	cat > $LIST <<'EOF'
 # --- 1-6: чистая нарезка, БЕЗ фейков (техника в чистом виде) ---
@@ -450,6 +455,16 @@ make_list() {
 --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:badsum:repeats=6 --lua-desync=multidisorder:pos=midsld
 # --- 17: имитация двухпакетного hello (kyber у браузеров) - разрез на 1-м байте ---
 --payload=tls_client_hello --lua-desync=multisplit:pos=1
+# --- 18-19: 7-точечный шред по всем границам SNI (мульти-разрез) ---
+--payload=tls_client_hello --lua-desync=multisplit:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
+--payload=tls_client_hello --lua-desync=multidisorder:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
+# --- 20-21: badsum-фейк внутри нарезки + 7-шред (пара, механика дробилки сообщества) ---
+--payload=tls_client_hello --lua-desync=multisplit:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=4 --lua-desync=multisplit:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
+--payload=tls_client_hello --lua-desync=multidisorder:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=4 --lua-desync=multidisorder:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
+# --- 22: простой разрез с seqovl=1 (без паттерна, как в лестнице сообщества) ---
+--payload=tls_client_hello --lua-desync=multisplit:pos=1,midsld:seqovl=1
+# --- 23: двухсторонний шред (payload=all - режется и ответ сервера, ServerHello) ---
+--payload=all --lua-desync=multisplit:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
 EOF
 }
 

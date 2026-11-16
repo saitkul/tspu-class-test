@@ -58,15 +58,18 @@ case "$PKG_MGR" in
         ;;
 esac
 
-# --- 4. Сброс кэша LuCI и ГАРАНТИРОВАННАЯ деавторизация ---
+# --- 4. Сброс кэша LuCI, перечитание ACL и ГАРАНТИРОВАННАЯ деавторизация ---
 rm -f /tmp/luci-indexcache* 2>/dev/null
 rm -rf /tmp/luci-modulecache/ 2>/dev/null
-# rpcd перезапускается отложенно: установка завершается, затем сессии LuCI
-# умирают - панель перезагружается и просит свежий вход (обязательно после установки)
-(sleep 3; /etc/init.d/rpcd restart 2>/dev/null) >/dev/null 2>&1 &
+/etc/init.d/rpcd reload 2>/dev/null
+# уничтожить ВСЕ сессии LuCI через ubus (как выход из LuCI): мгновенно и
+# синхронно, без рестарта rpcd и без гонки с логином - панель сразу просит свежий вход
+for sid in $(ubus call session list 2>/dev/null | grep -oE '"[^"]+"' | tr -d '"'); do
+	ubus call session destroy '{"ubus_rpc_session":"'"$sid"'"}' >/dev/null 2>&1
+done
 
 echo
-echo "Установлено. Панель LuCI перезагрузится и попросит войти заново -"
-echo "это обязательная деавторизация после установки luci-приложения."
+echo "Установлено. Все сессии панели LuCI завершены - войдите заново"
+echo "(обязательная деавторизация после установки luci-приложения)."
 echo "После входа: LuCI -> Службы -> TSPU test."
 echo "Требуется установленный Zapret2 в /opt/zapret2 (с blockcheck2.sh) и curl."

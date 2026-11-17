@@ -141,7 +141,7 @@ function action_applyzapret()
 		return
 	end
 	local hl = tostring(http.formvalue("hostlist") or "")
-	if hl ~= "" and not hl:match("^zapret_hosts_[A-Za-z0-9_.%-]+%.txt$") then
+	if hl ~= "" and not hl:match("^[A-Za-z0-9_.%-]+$") then
 		http.prepare_content("text/plain; charset=utf-8")
 		http.write("state=error msg=invalid hostlist name")
 		return
@@ -156,7 +156,7 @@ function action_applyzapret()
 	end
 	-- Выбор списка хостов из UI (имя zapret_hosts_*.txt, без путей)
 	local hl = tostring(http.formvalue("hostlist") or "")
-	if hl ~= "" and not hl:match("^zapret_hosts_[A-Za-z0-9_.%-]+%.txt$") then
+	if hl ~= "" and not hl:match("^[A-Za-z0-9_.%-]+$") then
 		http.prepare_content("text/plain; charset=utf-8")
 		http.write("state=error msg=invalid hostlist name")
 		return

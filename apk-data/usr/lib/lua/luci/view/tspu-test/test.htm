@@ -176,7 +176,7 @@
 				<label class="cbi-value-title">Применить в Zapret2</label>
 				<div class="cbi-value-field">
 					<label style="font-size:.92em; color:#888">Список хостов для секции: </label>
-					<input id="tspu_hl_input" type="text" placeholder="пусто = авто" style="max-width:420px">
+					<input id="tspu_hl_input" type="text" placeholder="пусто = авто по домену (или имя списка: discord, amdm...)" style="max-width:420px">
 					<div id="tspu_apply_row" style="display:flex; flex-wrap:wrap; gap:.4em"></div>
 					<button class="btn cbi-button cbi-button-negative" onclick="tspuRemove()" style="margin-top:.4em">Удалить секцию tspu_test</button>
 					<p style="color:#888; margin:.4em 0 0; font-size:.92em">Кнопка записывает секцию <b>tspu_test</b> в /etc/config/zapret2 (в начало списка стратегий — first-match-wins), создаёт резервную копию конфига, перезапускает Zapret2. <b>Удалить</b> убирает секцию tspu_test целиком (списки хостов не трогаются). Список хостов подставляется по тестируемому домену (youtube → список youtube).

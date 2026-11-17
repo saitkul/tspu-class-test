@@ -175,7 +175,7 @@
 				<label class="cbi-value-title">Применить в Zapret2</label>
 				<div class="cbi-value-field">
 					<label style="font-size:.92em; color:#888">Список хостов для секции: </label>
-					<select id="tspu_hl_sel" style="max-width:420px"><option value="">— определяю по ключевым словам —</option></select>
+					<input id="tspu_hl_input" type="text" placeholder="пусто = авто (youtube/google из ipset)" style="max-width:420px">
 					<div id="tspu_apply_row" style="display:flex; flex-wrap:wrap; gap:.4em"></div>
 					<button class="btn cbi-button cbi-button-negative" onclick="tspuRollback()" style="margin-top:.4em">Откатить изменения Zapret2</button>
 					<button class="btn cbi-button cbi-button-negative" onclick="tspuRemove()" style="margin-top:.4em">Удалить секцию tspu_test</button>
@@ -200,8 +200,6 @@
 	var U_DL     = '<%=luci.dispatcher.build_url("admin/services/tspu-test/download")%>';
 	var U_APPLY    = '<%=luci.dispatcher.build_url("admin/services/tspu-test/applyzapret")%>';
 	var U_ROLLBACK = '<%=luci.dispatcher.build_url("admin/services/tspu-test/rollbackzapret")%>';
-	var U_HL   = '<%=luci.dispatcher.build_url("admin/services/tspu-test/listhostlists")%>';
-	var U_RM   = '<%=luci.dispatcher.build_url("admin/services/tspu-test/removetspu")%>';
 
 	var elDomain = document.getElementById('tspu_domain');
 	var elRep = document.getElementById('tspu_repeats');
@@ -1078,22 +1076,9 @@
 		document.getElementById('tspu_apply_row').innerHTML = rowHtml;
 		document.getElementById('tspu_apply_wrap').style.display = '';
 		/* Списки хостов: заполнить select, авто-выбор по ключевым словам */
-		xhr(U_HL, function (t) {
-			var sel = document.getElementById('tspu_hl_sel');
-			var files = t.split('\n').filter(function (x) { return x.indexOf('zapret_hosts_') === 0; });
-			var opts = '<option value="">— без списка хостов —</option>';
-			var auto = '';
-			for (var fi = 0; fi < files.length; fi++) {
-				var f = files[fi];
-				opts += '<option value="' + f + '">' + f + '</option>';
-				if (!auto && /youtube|yt_|_yt|google|video/i.test(f)) auto = f;
-			}
-			sel.innerHTML = opts;
-			if (auto) sel.value = auto;
-		});
 		window.tspuApplyHostlist = function () {
-			var sel = document.getElementById('tspu_hl_sel');
-			return sel ? sel.value : '';
+			var el = document.getElementById('tspu_hl_input');
+			return el ? el.value.replace(/[^A-Za-z0-9_.-]/g, '') : '';
 		};
 		o.push('');
 		o.push('— Как применить: скопируйте выбранный вариант ЦЕЛИКОМ в поле script');
@@ -1180,7 +1165,7 @@
 	window.tspuRemove = function () {
 		if (!window.confirm('Удалить секцию tspu_test из /etc/config/zapret2 и перезапустить Zapret2? Остальные секции и списки хостов не затрагиваются.')) return;
 		elGenStatus.textContent = 'Удаляю секцию tspu_test...';
-		xhr(U_RM, function (t) {
+		xhr(U_APPLY + '?script=@REMOVE@&label=remove', function (t) {
 			elGenStatus.textContent = (t.indexOf('state=ok') >= 0) ? 'Секция tspu_test удалена, Zapret2 перезапущен.' : ('Ошибка удаления: ' + t);
 		}, function () {
 			elGenStatus.textContent = 'Не удалось обратиться к роутеру.';

@@ -583,6 +583,10 @@ case "${1:-}" in
 			cp /etc/config/zapret2.new /etc/config/zapret2.final
 		fi
 		mv /etc/config/zapret2.final /etc/config/zapret2
+		# Активировать .default-файл списка, если файла нет (как RR GUI при заполнении списка)
+		if [ -n "$HL" ] && [ ! -f "/opt/zapret2/ipset/zapret_hosts_$HL.txt" ] && [ -f "/opt/zapret2/ipset/zapret_hosts_$HL.txt.default" ]; then
+			cp "/opt/zapret2/ipset/zapret_hosts_$HL.txt.default" "/opt/zapret2/ipset/zapret_hosts_$HL.txt"
+		fi
 		uci -q get zapret2.tspu_test.script 2>/dev/null | grep -q -- '--lua-desync' || { cp "$BK" /etc/config/zapret2; /etc/init.d/zapret2 restart 2>/dev/null; echo "state=error msg=verify failed (empty script) - restored from backup"; exit 1; }
 		# ЖЁСТКАЯ проверка: script не пуст (иначе секция-пустышка перехватит весь трафик)
 		uci -q get zapret2.tspu_test.script 2>/dev/null | grep -q -- '--lua-desync' || { cp "$BK" /etc/config/zapret2; /etc/init.d/zapret2 restart 2>/dev/null; echo "state=error msg=verify failed (empty script) - restored from backup"; exit 1; }

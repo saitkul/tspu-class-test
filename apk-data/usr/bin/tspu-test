@@ -3,7 +3,7 @@
 #  TSPU test - CLI-ядро приложения luci-app-tspu-test
 #  Запуск «класс-теста ТСПУ» (ядро tspu-class-test v2.2) через
 #  blockcheck2 из /opt/zapret2. Определяет, какие механики
-#  десинхронизации пропускает ТСПУ провайдера (23 стратегии,
+#  десинхронизации пропускает ТСПУ провайдера (31 стратегия,
 #  TLS 1.2 + 1.3, SCANLEVEL=force), печатает вердикт «КЛАСС ТСПУ».
 #
 #  Команды:
@@ -118,7 +118,7 @@ do_run() {
 	A=$AWKF
 	L=/tmp/class_test.log
 	RFULL=/tmp/class_report.txt
-	SCRIPT_VER="TSPU test @APP_VERSION@ (ядро tspu-class-test v2.4): 23 стратегии, SCANLEVEL=force"
+	SCRIPT_VER="TSPU test @APP_VERSION@ (ядро tspu-class-test v2.5): 31 стратегия, SCANLEVEL=force"
 
 	echo $$ > "$PIDF"
 
@@ -197,7 +197,7 @@ END {
     # 20-21 - badsum-фейк внутри нарезки (механика дробилки), 22 - seqovl=1,
     # 23 - двухсторонний шред (payload=all - режется и ответ сервера).
     dis = ""; spl = ""; fk = ""; cb = ""; cut = ""
-    for (k = 1; k <= 23; k++) if (index(st " ", " " k " ") > 0) {
+    for (k = 1; k <= 31; k++) if (index(st " ", " " k " ") > 0) {
       if (k <= 6 || k == 17 || k == 18 || k == 19 || k == 22 || k == 23) cut = cut " " k
       if (k == 1 || k == 4 || k == 6 || k == 19) dis = dis " " k
       else if (k == 2 || k == 5 || k == 17 || k == 18 || k == 22 || k == 23) spl = spl " " k
@@ -234,12 +234,15 @@ END {
     if (index(st " ", " 21 ") > 0) bd = bd " 21"
     if (bd != "") nt = nt "badsum-пара внутри нарезки + 7-шред прошла (строки" bd ") - механика дробилки: примеси сбивают классификацию ТСПУ. "
     if (index(st " ", " 23 ") > 0) nt = nt "Строка 23 (payload=all) прошла: режется и ответ сервера (двухсторонний десинк) - ломает и классификацию по ServerHello. "
+    nsd = ""
+    for (kn = 24; kn <= 31; kn++) if (index(st " ", " " kn " ") > 0) nsd = nsd " " kn
+    if (nsd != "") nt = nt "Шумовая серия дробилки (строки" nsd ") прошла: дозы и позиции badsum-примесей отработали - персональная дробилка соберётся из ваших данных. "
     NT[p] = nt
     # РЕКОМЕНДАЦИЯ: одна минимально достаточная строка по классу
     # (L0-/L0 - обратный порядок; аномалия - seqovl/двухпакетный; L2 - комбо; особый - голый фейк)
     rec = ""
-    split("1 4 6 5 22 17 2 18 19 20 21 11 12 13 14 15 16 23 7 8 9 10 3", PRI, " ")
-    for (pi = 1; pi <= 23 && rec == ""; pi++) {
+    split("1 4 6 5 22 17 2 18 19 20 21 24 25 26 27 28 29 30 31 11 12 13 14 15 16 23 7 8 9 10 3", PRI, " ")
+    for (pi = 1; pi <= 31 && rec == ""; pi++) {
       rk = PRI[pi]
       if (index(st " ", " " rk " ") > 0) rec = rk
     }
@@ -437,7 +440,7 @@ AWK
 	echo "state=done exitcode=0" > "$STATUS"
 }
 
-# --- 23 стратегии stage1 (v2.5): нарезка / голый фейк / комбинации / двухпакетный hello / комбо дробилки ---
+# --- 31 стратегия stage1 (v2.5): нарезка / голый фейк / комбинации / двухпакетный hello / комбо дробилки / шумовая серия ---
 make_list() {
 	cat > $LIST <<'EOF'
 # --- 1-6: чистая нарезка, БЕЗ фейков (техника в чистом виде) ---
@@ -471,6 +474,17 @@ make_list() {
 --payload=tls_client_hello --lua-desync=multisplit:pos=1,midsld:seqovl=1
 # --- 23: двухсторонний шред (payload=all - режется и ответ сервера, ServerHello) ---
 --payload=all --lua-desync=multisplit:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
+# --- 24-27: шумовая серия дробилки - дозы и позиции badsum-пары ---
+--payload=tls_client_hello --lua-desync=multisplit:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=2 --lua-desync=multisplit:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
+--payload=tls_client_hello --lua-desync=multisplit:blob=fake_default_tls:badsum:pos=3:nodrop:repeats=6 --lua-desync=multisplit:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
+--payload=tls_client_hello --lua-desync=multidisorder:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=2 --lua-desync=multidisorder:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
+--payload=tls_client_hello --lua-desync=multidisorder:blob=fake_default_tls:badsum:pos=3:nodrop:repeats=6 --lua-desync=multidisorder:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
+# --- 28-29: двухсторонняя дробилка целиком (payload=all + пара + шред) ---
+--payload=all --lua-desync=multisplit:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=4 --lua-desync=multisplit:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
+--payload=all --lua-desync=multidisorder:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=4 --lua-desync=multidisorder:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1
+# --- 30-31: шум-проба тяжёлой дозы без шреда (изолирует вклад примесей) ---
+--payload=tls_client_hello --lua-desync=multisplit:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=6
+--payload=tls_client_hello --lua-desync=multidisorder:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=6
 EOF
 }
 

@@ -560,6 +560,14 @@
 			var rProto = null, rArgs = null, rOk = 0, rTot = 0, rSeen = false;
 			function numForArgs(a) {
 				a = genEscape(a);
+				if (a.indexOf('multisplit:blob') >= 0 && a.indexOf('--payload=all') >= 0) return 28;
+				if (a.indexOf('multidisorder:blob') >= 0 && a.indexOf('--payload=all') >= 0) return 29;
+				if (a.indexOf('multisplit:blob') >= 0 && a.indexOf('repeats=6') >= 0 && a.indexOf('pos=3') >= 0) return 25;
+				if (a.indexOf('multidisorder:blob') >= 0 && a.indexOf('repeats=6') >= 0 && a.indexOf('pos=3') >= 0) return 27;
+				if (a.indexOf('multisplit:blob') >= 0 && a.indexOf('repeats=6') >= 0) return 30;
+				if (a.indexOf('multidisorder:blob') >= 0 && a.indexOf('repeats=6') >= 0) return 31;
+				if (a.indexOf('multisplit:blob') >= 0 && a.indexOf('repeats=2') >= 0) return 24;
+				if (a.indexOf('multidisorder:blob') >= 0 && a.indexOf('repeats=2') >= 0) return 26;
 				if (a.indexOf('--payload=all') >= 0) return 23;
 				if (a.indexOf('multisplit:blob') >= 0) return 20;
 				if (a.indexOf('multidisorder:blob') >= 0) return 21;
@@ -614,7 +622,7 @@
 			flushR();
 			/* стабильно = прошёл на ОБЕИХ версиях TLS (или на единственной имеющейся) */
 			var both = {};
-			for (var rn = 1; rn <= 23; rn++) {
+			for (var rn = 1; rn <= 31; rn++) {
 				var a12 = res.tls12[rn], a13 = res.tls13[rn];
 				if ((a12 && a13 && a12 === a13) || (a12 && !a13 && res.tls13 && Object.keys(res.tls13).length === 0)) both[rn] = a12;
 				else if (a13 && !a12 && res.tls12 && Object.keys(res.tls12).length === 0) both[rn] = a13;
@@ -622,7 +630,7 @@
 			}
 			/* первый стабильный по корпусному приоритету — база */
 			var rawNums = [];
-			for (var rn2 = 1; rn2 <= 23; rn2++) if (both[rn2] !== undefined) rawNums.push(rn2);
+			for (var rn2 = 1; rn2 <= 31; rn2++) if (both[rn2] !== undefined) rawNums.push(rn2);
 			var rawBase = rawNums.length ? rawNums[0] : null;
 			var w2 = {};
 			for (var rn3 in both) w2[parseInt(rn3, 10)] = both[rn3];
@@ -802,13 +810,13 @@
 		var stable = [];
 		if (isTspu) {
 			var both = [];
-			for (var n = 1; n <= 23; n++) if (stableBoth(n)) both.push(n);
+			for (var n = 1; n <= 31; n++) if (stableBoth(n)) both.push(n);
 			stable = both;
 			if (!stable.length) { /* протоколы разошлись — берём объединение */ 
-				for (var m = 1; m <= 23; m++) if (st12.indexOf(m) >= 0 || st13.indexOf(m) >= 0) stable.push(m);
+				for (var m = 1; m <= 31; m++) if (st12.indexOf(m) >= 0 || st13.indexOf(m) >= 0) stable.push(m);
 			}
 		}
-		function hasFake(num) { return (num >= 7 && num <= 16) || num === 20 || num === 21; }
+		function hasFake(num) { return (num >= 7 && num <= 16) || num === 20 || num === 21 || (num >= 24 && num <= 31); }
 
 		/* --- Вариант 1: Минимальная (основная) — рекомендованная строка --- */
 		var v1 = withPreamble(baseArgs);
@@ -841,7 +849,7 @@
 				v3note = '— фейковые компоненты на вашем ТСПУ отсекаются (строки 7–16 не прошли)';
 			} else {
 				var fakeLine = null, fakeNum = 0;
-				var order3 = [13, 14, 20, 21, 15, 12, 11, 16, 10, 7];
+				var order3 = [13, 14, 20, 21, 24, 26, 25, 27, 15, 12, 11, 16, 10, 7];
 				for (var c3 = 0; c3 < order3.length && !fakeLine; c3++) {
 					var n3 = order3[c3];
 					if (stable.indexOf(n3) >= 0 && wk[n3] && n3 !== baseNum) {
@@ -878,11 +886,11 @@
 			   на протоколе базы, затем остальные; внутри групп — по REC-приоритету
 			   (не по номеру: иначе кап 8 вытесняет новые комбо-строки 18-23);
 			   лимит 9 ступеней с базой — практика сообщества */
-			var priOrd = [1, 4, 6, 5, 22, 17, 2, 18, 19, 20, 21, 11, 12, 13, 14, 15, 16, 23, 7, 8, 9, 10, 3];
+			var priOrd = [1, 4, 6, 5, 22, 17, 2, 18, 19, 20, 21, 24, 25, 26, 27, 28, 29, 30, 31, 11, 12, 13, 14, 15, 16, 23, 7, 8, 9, 10, 3];
 			function priRank(nn) { var r = priOrd.indexOf(nn); return r < 0 ? 99 : r; }
 			var baseList = st12.indexOf(baseNum) >= 0 ? st12 : st13;
 			var pool = [], g1 = [], g2 = [], p1, p2;
-			for (var n4 = 1; n4 <= 23; n4++) {
+			for (var n4 = 1; n4 <= 31; n4++) {
 				if (n4 === baseNum || stable.indexOf(n4) < 0 || !wk[n4]) continue;
 				pool.push(n4);
 			}
@@ -914,7 +922,7 @@
 		} else {
 			var min13 = parsed.reco['TLS 1.3'] && parsed.reco['TLS 1.3'] !== baseNum ? parsed.reco['TLS 1.3'] : null;
 			var cand5 = [];
-			var pref5 = [20, 21, 19, 18, 22, 23];
+			var pref5 = [20, 21, 24, 25, 26, 27, 19, 18, 22];
 			for (var q5 = 0; q5 < pref5.length; q5++) {
 				if (pref5[q5] !== baseNum && stable.indexOf(pref5[q5]) >= 0 && wk[pref5[q5]]) cand5.push(pref5[q5]);
 			}
@@ -933,6 +941,28 @@
 				'--in-range=x',
 				tagStrategy(stripPayload(baseArgs), 1)].concat(steps5);
 			v5note = 'ваш набор в рамке дробилки: payload=all режет и ответ сервера, быстрый circular';
+		}
+
+		/* --- Вариант 7: Дробилка-Лайт — сниженная доза шума (против сигнатуры, для слабых роутеров) --- */
+		var v7 = null, v7note = '';
+		var lightGate = (stable.indexOf(24) >= 0 && wk[24]) || (stable.indexOf(26) >= 0 && wk[26]);
+		if (isTspu && lightGate) {
+			var lightC = [];
+			var pref7 = [24, 26, 19, 18, 22];
+			for (var q7 = 0; q7 < pref7.length; q7++) {
+				if (pref7[q7] !== baseNum && stable.indexOf(pref7[q7]) >= 0 && wk[pref7[q7]]) lightC.push(pref7[q7]);
+			}
+			var steps7 = [];
+			for (var c7 = 0; c7 < lightC.length && steps7.length < 4; c7++) {
+				steps7.push(tagStrategy(stripPayload(wk[lightC[c7]]), steps7.length + 2));
+			}
+			v7 = ['--out-range=-s34228',
+				'--payload=all',
+				'--in-range=-s5556',
+				'--lua-desync=circular:fails=2:time=60:retrans=2:nld=2:reset',
+				'--in-range=x',
+				tagStrategy(stripPayload(baseArgs), 1)].concat(steps7);
+			v7note = 'сниженная доза шума (repeats=2) — против выработки сигнатуры и для слабых роутеров';
 		}
 
 		/* ---------- вывод ---------- */
@@ -986,6 +1016,12 @@
 		o.push('   (профиль для шаблона: TCP, порт 443, БЕЗ фильтра L7; payload=all режет и ответ');
 		o.push('    сервера, badsum-примеси сбивают классификацию ТСПУ,');
 		o.push('    7 разрезов бьют ресборку в семь точек, circular восстанавливается за 60 с)');
+		if (v7) {
+			o.push('');
+			o.push('7. Дробилка-Лайт (сниженная доза шума — против сигнатуры, для слабых роутеров):');
+			o = o.concat(v7);
+			o.push('   (' + v7note + ')');
+		}
 		o.push('');
 		o.push('— Как применить: скопируйте выбранный вариант ЦЕЛИКОМ в поле script');
 		o.push('  профиля Zapret2 (многострочно — так и нужно), или секцией:');

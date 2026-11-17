@@ -494,12 +494,35 @@ case "${1:-}" in
 		make_list
 		do_start "$@"
 		;;
+	listhostlists)
+		ls -1 /opt/zapret2/ipset/zapret_hosts_*.txt 2>/dev/null | sed 's%.*/%%'
+		;;
+	removetspu)
+		[ -f /etc/config/zapret2 ] || { echo "state=error msg=/etc/config/zapret2 not found"; exit 1; }
+		TS=$(date +%Y%m%d%H%M%S)
+		BK="/tmp/zapret2.backup.$TS"
+		cp /etc/config/zapret2 "$BK" 2>/dev/null || { echo "state=error msg=backup failed"; exit 1; }
+		awk '/^config strategy .tspu_test.$/{skip=1; next} /^config /{skip=0} !skip' /etc/config/zapret2 > /etc/config/zapret2.new
+		mv /etc/config/zapret2.new /etc/config/zapret2
+		uci -q show zapret2 >/dev/null 2>&1 || { cp "$BK" /etc/config/zapret2; echo "state=error msg=uci validation failed - restored"; exit 1; }
+		/etc/init.d/zapret2 restart 2>/dev/null
+		echo "state=ok removed=tspu_test backup=$BK"
+		;;
 	applyzapret)
 		# Применение готовой стратегии в /etc/config/zapret2 (запрос владельца проекта).
 		# Сценарий приходит в /tmp/tspu_apply.script (пишет контроллер LuCI).
 		[ -f /tmp/tspu_apply.script ] || { echo "state=error msg=no /tmp/tspu_apply.script"; exit 1; }
 		[ -f /etc/config/zapret2 ] || { echo "state=error msg=/etc/config/zapret2 not found (Zapret2 установлен?)"; exit 1; }
 		grep -q -- '--lua-desync' /tmp/tspu_apply.script || { echo "state=error msg=no lua-desync in script"; exit 1; }
+		# Список хостов: выбор из UI (файл /tmp/tspu_apply.hostlist, имя zapret_hosts_*.txt)
+		HL=""
+		[ -f /tmp/tspu_apply.hostlist ] && HL=$(head -n1 /tmp/tspu_apply.hostlist 2>/dev/null)
+		HL=$(echo "$HL" | tr -dc "A-Za-z0-9_.-")
+		if [ -n "$HL" ] && [ -f "/opt/zapret2/ipset/$HL" ]; then
+			HL_LINE="	list hostlist '/opt/zapret2/ipset/$HL'"
+		else
+			HL_LINE=""
+		fi
 		grep -q -- '--lua-desync' /tmp/tspu_apply.script || { echo "state=error msg=no lua-desync in script"; exit 1; }
 		# Валидация: только строки-аргументы nfqws2 (без кавычек, $, ;, |, &, <, >, скобок)
 		if grep -qvE '^[ 	]*$|^--[A-Za-z0-9_%=:,/+.@-]+([ 	]+[A-Za-z0-9_%=:,/+.@-]+)*[ 	]*$' /tmp/tspu_apply.script; then
@@ -520,6 +543,8 @@ case "${1:-}" in
 			echo "	option port '443'"
 			echo "	list protocol 'tcp'"
 			echo "	list filter_l3 'ipv4'"
+			echo "	list filter_l7 'tls'"
+			[ -n "$HL_LINE" ] && echo "$HL_LINE"
 			echo "	list filter_l7 'tls'"
 			printf "	option script '"
 			awk 'NR>1{printf "\n"} {printf "%s", $0}' /tmp/tspu_apply.script

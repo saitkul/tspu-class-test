@@ -31,6 +31,10 @@ function index()
 		call("action_applyzapret")).leaf = true
 	entry({"admin", "services", "tspu-test", "rollbackzapret"},
 		call("action_rollbackzapret")).leaf = true
+	entry({"admin", "services", "tspu-test", "listhostlists"},
+		call("action_listhostlists")).leaf = true
+	entry({"admin", "services", "tspu-test", "removetspu"},
+		call("action_removetspu")).leaf = true
 end
 
 -- Белый список скачиваемых логов: никаких подстановок путей из запроса
@@ -146,10 +150,29 @@ function action_applyzapret()
 		http.write("state=error msg=cannot write temp file")
 		return
 	end
+	-- Выбор списка хостов из UI (имя zapret_hosts_*.txt, без путей)
+	local hl = tostring(http.formvalue("hostlist") or "")
+	if hl ~= "" and not hl:match("^zapret_hosts_[A-Za-z0-9_.%-]+%.txt$") then
+		http.prepare_content("text/plain; charset=utf-8")
+		http.write("state=error msg=invalid hostlist name")
+		return
+	end
+	local hf = io.open("/tmp/tspu_apply.hostlist", "w")
+	if hf then hf:write(hl) hf:close() end
 	f:write(script)
 	f:close()
 	http.prepare_content("text/plain; charset=utf-8")
 	http.write(luci.sys.exec(string.format("/usr/bin/tspu-test applyzapret '%s' 2>&1", lbl)))
+end
+
+function action_listhostlists()
+	http.prepare_content("text/plain; charset=utf-8")
+	http.write(luci.sys.exec("ls -1 /opt/zapret2/ipset/zapret_hosts_*.txt 2>/dev/null | sed 's%.*/%%'"))
+end
+
+function action_removetspu()
+	http.prepare_content("text/plain; charset=utf-8")
+	http.write(luci.sys.exec("/usr/bin/tspu-test removetspu 2>&1"))
 end
 
 function action_rollbackzapret()

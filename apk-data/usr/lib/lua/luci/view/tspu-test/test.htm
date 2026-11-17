@@ -103,6 +103,7 @@
 			<label class="cbi-value-title">Вердикт</label>
 			<div class="cbi-value-field">
 				<span id="tspu_verdict_text" style="font-weight:bold; white-space:pre-line"></span>
+				<div id="tspu_class_info" style="display:none; margin-top:.5em; font-size:.92em; color:#888"></div>
 			</div>
 		</div>
 		<div class="cbi-value" id="tspu_reco" style="display:none">
@@ -173,8 +174,11 @@
 			<div class="cbi-value" id="tspu_apply_wrap">
 				<label class="cbi-value-title">Применить в Zapret2</label>
 				<div class="cbi-value-field">
+					<label style="font-size:.92em; color:#888">Список хостов для секции: </label>
+					<select id="tspu_hl_sel" style="max-width:420px"><option value="">— определяю по ключевым словам —</option></select>
 					<div id="tspu_apply_row" style="display:flex; flex-wrap:wrap; gap:.4em"></div>
 					<button class="btn cbi-button cbi-button-negative" onclick="tspuRollback()" style="margin-top:.4em">Откатить изменения Zapret2</button>
+					<button class="btn cbi-button cbi-button-negative" onclick="tspuRemove()" style="margin-top:.4em">Удалить секцию tspu_test</button>
 					<p style="color:#888; margin:.4em 0 0; font-size:.92em">Кнопка записывает секцию <b>tspu_test</b> в /etc/config/zapret2 (в начало списка стратегий — first-match-wins), создаёт резервную копию, перезапускает Zapret2. <b>Откатить</b> возвращает конфиг из резервной копии.</p>
 				</div>
 			</div>
@@ -196,6 +200,8 @@
 	var U_DL     = '<%=luci.dispatcher.build_url("admin/services/tspu-test/download")%>';
 	var U_APPLY    = '<%=luci.dispatcher.build_url("admin/services/tspu-test/applyzapret")%>';
 	var U_ROLLBACK = '<%=luci.dispatcher.build_url("admin/services/tspu-test/rollbackzapret")%>';
+	var U_HL   = '<%=luci.dispatcher.build_url("admin/services/tspu-test/listhostlists")%>';
+	var U_RM   = '<%=luci.dispatcher.build_url("admin/services/tspu-test/removetspu")%>';
 
 	var elDomain = document.getElementById('tspu_domain');
 	var elRep = document.getElementById('tspu_repeats');
@@ -358,6 +364,25 @@
 			elVerdictText.textContent = vd.join('\n');
 			elVerdict.className = 'tspu-verdict tspu-verdict-' + cls;
 			elVerdict.style.display = '';
+			/* Интерактивная расшифровка класса */
+			var CI = {
+				'l0-': 'Самый лёгкий ТСПУ: разрезы проходят даже без фейков. Начните с Варианта 1; при тормозах видео — Вариант 5 (Дробилка). Чистый multisplit ТСПУ собирает — прямому разрезу помогает seqovl (Вариант 2, 3).',
+				'l0': 'Обратный порядок (multidisorder) пробивает, прямой ТСПУ собирает. Достаточно Варианта 1; при сбоях — Вариант 2 или Лестница.',
+				'l2': 'Нарезка проходит только вместе с фейком. Основа — Вариант 3; Лестница добавит фейки по ступеням.',
+				'особый': 'ТСПУ верит голому фейку, но режет нарезку — опирайтесь на фулинг из прошедших строк (7–10).',
+				'аномалия': 'Прямой разрез пробивает, обратный ТСПУ собирает — опирайтесь на multisplit/seqovl (строки 5, 22 в отчёте).',
+				'undef': 'Строки флапнули — повторите тест с ожиданием 8 с и повторами 5 (галочка Автопрогонка).'
+			};
+			var vtxt = vd.join(' ');
+			var cinfo = '';
+			if (vtxt.indexOf('L0-') >= 0) cinfo = CI['l0-'];
+			else if (vtxt.indexOf('L2') >= 0) cinfo = CI['l2'];
+			else if (vtxt.indexOf('аномалия') >= 0) cinfo = CI['аномалия'];
+			else if (vtxt.indexOf('особый') >= 0) cinfo = CI['особый'];
+			else if (vtxt.indexOf('L0') >= 0) cinfo = CI['l0'];
+			if (vtxt.indexOf('не определён') >= 0) cinfo = CI['undef'];
+			var elCI = document.getElementById('tspu_class_info');
+			if (cinfo) { elCI.textContent = cinfo; elCI.style.display = ''; } else { elCI.style.display = 'none'; }
 		} else {
 			elVerdict.style.display = 'none';
 		}
@@ -1052,6 +1077,24 @@
 		}
 		document.getElementById('tspu_apply_row').innerHTML = rowHtml;
 		document.getElementById('tspu_apply_wrap').style.display = '';
+		/* Списки хостов: заполнить select, авто-выбор по ключевым словам */
+		xhr(U_HL, function (t) {
+			var sel = document.getElementById('tspu_hl_sel');
+			var files = t.split('\n').filter(function (x) { return x.indexOf('zapret_hosts_') === 0; });
+			var opts = '<option value="">— без списка хостов —</option>';
+			var auto = '';
+			for (var fi = 0; fi < files.length; fi++) {
+				var f = files[fi];
+				opts += '<option value="' + f + '">' + f + '</option>';
+				if (!auto && /youtube|yt_|_yt|google|video/i.test(f)) auto = f;
+			}
+			sel.innerHTML = opts;
+			if (auto) sel.value = auto;
+		});
+		window.tspuApplyHostlist = function () {
+			var sel = document.getElementById('tspu_hl_sel');
+			return sel ? sel.value : '';
+		};
 		o.push('');
 		o.push('— Как применить: скопируйте выбранный вариант ЦЕЛИКОМ в поле script');
 		o.push('  профиля Zapret2 (многострочно — так и нужно), или секцией:');
@@ -1126,12 +1169,21 @@
 		if (!v) return;
 		if (!window.confirm('Применить вариант ' + v.n + ' («' + v.label + '») в Zapret2?\nСекция tspu_test будет записана в /etc/config/zapret2 (существующая заменяется), создаётся резервная копия, Zapret2 перезапустится.')) return;
 		elGenStatus.textContent = 'Применяю вариант ' + v.n + ' в Zapret2...';
-		xhr(U_APPLY + '?script=' + encodeURIComponent(v.script) + '&label=' + encodeURIComponent(v.label), function (t) {
+		xhr(U_APPLY + '?script=' + encodeURIComponent(v.script) + '&label=' + encodeURIComponent(v.label) + '&hostlist=' + encodeURIComponent(window.tspuApplyHostlist ? window.tspuApplyHostlist() : ''), function (t) {
 			elGenStatus.textContent = (t.indexOf('state=ok') >= 0)
 				? 'Готово: вариант ' + v.n + ' применён (секция tspu_test, Zapret2 перезапущен). Проверьте сайты в браузере (Инкогнито). Откат — кнопкой ниже.'
 				: ('Ошибка применения: ' + t);
 		}, function () {
 			elGenStatus.textContent = 'Не удалось обратиться к роутеру (HTTP-ошибка).';
+		});
+	};
+	window.tspuRemove = function () {
+		if (!window.confirm('Удалить секцию tspu_test из /etc/config/zapret2 и перезапустить Zapret2? Остальные секции и списки хостов не затрагиваются.')) return;
+		elGenStatus.textContent = 'Удаляю секцию tspu_test...';
+		xhr(U_RM, function (t) {
+			elGenStatus.textContent = (t.indexOf('state=ok') >= 0) ? 'Секция tspu_test удалена, Zapret2 перезапущен.' : ('Ошибка удаления: ' + t);
+		}, function () {
+			elGenStatus.textContent = 'Не удалось обратиться к роутеру.';
 		});
 	};
 	window.tspuRollback = function () {

@@ -29,8 +29,6 @@ function index()
 		call("action_download")).leaf = true
 	entry({"admin", "services", "tspu-test", "applyzapret"},
 		call("action_applyzapret")).leaf = true
-	entry({"admin", "services", "tspu-test", "rollbackzapret"},
-		call("action_rollbackzapret")).leaf = true
 end
 
 -- Белый список скачиваемых логов: никаких подстановок путей из запроса
@@ -169,7 +167,3 @@ function action_applyzapret()
 	http.write(luci.sys.exec(string.format("/usr/bin/tspu-test applyzapret '%s' 2>&1", lbl)))
 end
 
-function action_rollbackzapret()
-	http.prepare_content("text/plain; charset=utf-8")
-	http.write(luci.sys.exec("/usr/bin/tspu-test rollbackzapret 2>&1"))
-end

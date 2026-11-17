@@ -177,9 +177,8 @@
 					<label style="font-size:.92em; color:#888">Список хостов для секции: </label>
 					<input id="tspu_hl_input" type="text" placeholder="пусто = авто (youtube/google из ipset)" style="max-width:420px">
 					<div id="tspu_apply_row" style="display:flex; flex-wrap:wrap; gap:.4em"></div>
-					<button class="btn cbi-button cbi-button-negative" onclick="tspuRollback()" style="margin-top:.4em">Откатить изменения Zapret2</button>
 					<button class="btn cbi-button cbi-button-negative" onclick="tspuRemove()" style="margin-top:.4em">Удалить секцию tspu_test</button>
-					<p style="color:#888; margin:.4em 0 0; font-size:.92em">Кнопка записывает секцию <b>tspu_test</b> в /etc/config/zapret2 (в начало списка стратегий — first-match-wins), создаёт резервную копию, перезапускает Zapret2. <b>Откатить</b> возвращает конфиг из резервной копии.</p>
+					<p style="color:#888; margin:.4em 0 0; font-size:.92em">Кнопка записывает секцию <b>tspu_test</b> в /etc/config/zapret2 (в начало списка стратегий — first-match-wins), создаёт резервную копию конфига, перезапускает Zapret2. <b>Удалить</b> убирает секцию tspu_test целиком (списки хостов не трогаются).</p>
 				</div>
 			</div>
 		</div>
@@ -199,7 +198,6 @@
 	var U_LOG    = '<%=luci.dispatcher.build_url("admin/services/tspu-test/log")%>';
 	var U_DL     = '<%=luci.dispatcher.build_url("admin/services/tspu-test/download")%>';
 	var U_APPLY    = '<%=luci.dispatcher.build_url("admin/services/tspu-test/applyzapret")%>';
-	var U_ROLLBACK = '<%=luci.dispatcher.build_url("admin/services/tspu-test/rollbackzapret")%>';
 
 	var elDomain = document.getElementById('tspu_domain');
 	var elRep = document.getElementById('tspu_repeats');
@@ -1167,16 +1165,6 @@
 		elGenStatus.textContent = 'Удаляю секцию tspu_test...';
 		xhr(U_APPLY + '?script=@REMOVE@&label=remove', function (t) {
 			elGenStatus.textContent = (t.indexOf('state=ok') >= 0) ? 'Секция tspu_test удалена, Zapret2 перезапущен.' : ('Ошибка удаления: ' + t);
-		}, function () {
-			elGenStatus.textContent = 'Не удалось обратиться к роутеру.';
-		});
-	};
-	window.tspuRollback = function () {
-		if (!window.confirm('Восстановить /etc/config/zapret2 из последней резервной копии и перезапустить Zapret2?')) return;
-		xhr(U_ROLLBACK, function (t) {
-			elGenStatus.textContent = (t.indexOf('state=ok') >= 0)
-				? 'Откат выполнен: конфиг восстановлен из резервной копии, Zapret2 перезапущен.'
-				: ('Ошибка отката: ' + t);
 		}, function () {
 			elGenStatus.textContent = 'Не удалось обратиться к роутеру.';
 		});

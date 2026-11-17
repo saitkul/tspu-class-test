@@ -530,6 +530,9 @@ case "${1:-}" in
 		if [ -z "$HL" ]; then
 			HL=$(ls -1 /opt/zapret2/ipset/zapret_hosts_*.txt 2>/dev/null | sed 's%.*/%%' | grep -im1 -E 'youtube|yt_|google|video' || true)
 		fi
+		# Формат RR: list hostlist '<имя списка>' - ссылка на config list '<имя>' (определяется во вкладке Списки Zapret2)
+		HL=${HL#zapret_hosts_}
+		HL=${HL%.txt}
 		if [ -n "$HL" ] && [ -f "/opt/zapret2/ipset/$HL" ]; then
 			HL_LINE="	list hostlist '/opt/zapret2/ipset/$HL'"
 		else
@@ -584,14 +587,6 @@ case "${1:-}" in
 		ls -1t /tmp/zapret2.backup.* 2>/dev/null | tail -n +4 | xargs -r rm -f 2>/dev/null
 		/etc/init.d/zapret2 restart 2>/dev/null
 		echo "state=ok backup=$BK section=tspu_test zapret2=restarted"
-		;;
-	rollbackzapret)
-		BK=$(ls -1t /tmp/zapret2.backup.* 2>/dev/null | head -n 1)
-		[ -n "$BK" ] && [ -f "$BK" ] || { echo "state=error msg=no backup found"; exit 1; }
-		cp "$BK" /etc/config/zapret2 || { echo "state=error msg=restore failed"; exit 1; }
-		uci -q show zapret2 >/dev/null 2>&1 || { echo "state=error msg=restored config invalid"; exit 1; }
-		/etc/init.d/zapret2 restart 2>/dev/null
-		echo "state=ok restored=$BK"
 		;;
 	stop)
 		do_stop

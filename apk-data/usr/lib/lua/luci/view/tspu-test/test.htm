@@ -170,7 +170,7 @@
 					<p style="color:#888; margin:.4em 0 0; font-size:.92em">Секция <b>config strategy</b> — для /etc/config/zapret2 (терминал) или копирования строк в профиль. Строка script — то же самое в редакторе стратегий LuCI Zapret2. После применения перезапустите Zapret2 и проверьте в браузере (Инкогнито).</p>
 				</div>
 			</div>
-			<div class="cbi-value" id="tspu_apply_wrap" style="display:none">
+			<div class="cbi-value" id="tspu_apply_wrap">
 				<label class="cbi-value-title">Применить в Zapret2</label>
 				<div class="cbi-value-field">
 					<div id="tspu_apply_row" style="display:flex; flex-wrap:wrap; gap:.4em"></div>
@@ -1127,7 +1127,7 @@
 		if (!window.confirm('Применить вариант ' + v.n + ' («' + v.label + '») в Zapret2?\nСекция tspu_test будет записана в /etc/config/zapret2 (существующая заменяется), создаётся резервная копия, Zapret2 перезапустится.')) return;
 		elGenStatus.textContent = 'Применяю вариант ' + v.n + ' в Zapret2...';
 		xhr(U_APPLY + '?script=' + encodeURIComponent(v.script) + '&label=' + encodeURIComponent(v.label), function (t) {
-			elGenStatus.textContent = (t.indexOf('state=ok') === 0)
+			elGenStatus.textContent = (t.indexOf('state=ok') >= 0)
 				? 'Готово: вариант ' + v.n + ' применён (секция tspu_test, Zapret2 перезапущен). Проверьте сайты в браузере (Инкогнито). Откат — кнопкой ниже.'
 				: ('Ошибка применения: ' + t);
 		}, function () {
@@ -1137,7 +1137,7 @@
 	window.tspuRollback = function () {
 		if (!window.confirm('Восстановить /etc/config/zapret2 из последней резервной копии и перезапустить Zapret2?')) return;
 		xhr(U_ROLLBACK, function (t) {
-			elGenStatus.textContent = (t.indexOf('state=ok') === 0)
+			elGenStatus.textContent = (t.indexOf('state=ok') >= 0)
 				? 'Откат выполнен: конфиг восстановлен из резервной копии, Zapret2 перезапущен.'
 				: ('Ошибка отката: ' + t);
 		}, function () {

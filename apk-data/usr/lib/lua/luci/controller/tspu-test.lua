@@ -126,6 +126,8 @@ end
 function action_applyzapret()
 	local http = luci.http
 	local lbl = tostring(http.formvalue("label") or "tspu-test"):gsub("'", "")
+	local dom = tostring(http.formvalue("domain") or "")
+	if dom:match("[^%w%.%-]") then dom = "" end
 	local script = tostring(http.formvalue("script") or "")
 	if script ~= "@REMOVE@" and (#script < 8 or not script:match("^%-%-")) then
 		http.prepare_content("text/plain; charset=utf-8")
@@ -164,6 +166,6 @@ function action_applyzapret()
 	f:write(script)
 	f:close()
 	http.prepare_content("text/plain; charset=utf-8")
-	http.write(luci.sys.exec(string.format("/usr/bin/tspu-test applyzapret '%s' 2>&1", lbl)))
+	http.write(luci.sys.exec(string.format("/usr/bin/tspu-test applyzapret '%s' '%s' 2>&1", lbl, dom)))
 end
 

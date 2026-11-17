@@ -53,9 +53,10 @@
 			<div class="cbi-value-field">
 				<input id="tspu_domain" type="text" class="cbi-input-text" style="width:100%; max-width:420px" value="www.youtube.com" />
 				<details style="margin-top:.3em; color:#999">
-					<summary style="cursor:pointer">Видеотормоза/затыки при пройденном тесте? Проверьте узел googlevideo (отдельный прогон)</summary>
+					<summary style="cursor:pointer">Видео тормозит при пройденном тесте? Проверьте узел googlevideo (отдельный прогон)</summary>
 					<ol style="margin:.4em 0 .2em 1.2em; padding:0">
-						<li>Откройте любое видео YouTube на устройстве за этим роутером.</li>
+						<li><b>ВАЖНО: сканируйте КОНКРЕТНЫЙ узел, а не домен googlevideo.com</b> — сам домен сканировать бессмысленно, будет нулевой результат.</li>
+					<li>Откройте любое видео YouTube на устройстве за этим роутером.</li>
 						<li>Нажмите F12 → вкладка Network, в фильтр введите: <b>googlevideo</b></li>
 						<li>Наведите курсор на любой запрос <b>videoplayback…</b> — во всплывающей подсказке увидите URL вида https://rr1---sn-xxxx.googlevideo.com/videoplayback (узел опознавайте по домену, содержащему <b>.googlevideo.com</b> — форма бывает разной: префикс перед --- не всегда rr и номер бывает двузначным)</li>
 						<li>Скопируйте первую часть URL до /videoplayback — это узел, например <b>rr1---sn-xxxx.googlevideo.com</b> (подойдёт любой домен с .googlevideo.com)</li>
@@ -175,7 +176,7 @@
 				<label class="cbi-value-title">Применить в Zapret2</label>
 				<div class="cbi-value-field">
 					<label style="font-size:.92em; color:#888">Список хостов для секции: </label>
-					<input id="tspu_hl_input" type="text" placeholder="пусто = авто (youtube/google из ipset)" style="max-width:420px">
+					<input id="tspu_hl_input" type="text" placeholder="пусто = авто" style="max-width:420px">
 					<div id="tspu_apply_row" style="display:flex; flex-wrap:wrap; gap:.4em"></div>
 					<button class="btn cbi-button cbi-button-negative" onclick="tspuRemove()" style="margin-top:.4em">Удалить секцию tspu_test</button>
 					<p style="color:#888; margin:.4em 0 0; font-size:.92em">Кнопка записывает секцию <b>tspu_test</b> в /etc/config/zapret2 (в начало списка стратегий — first-match-wins), создаёт резервную копию конфига, перезапускает Zapret2. <b>Удалить</b> убирает секцию tspu_test целиком (списки хостов не трогаются).</p>
@@ -1096,7 +1097,7 @@
 		o.push('— Видео тормозит, а сайт работает? Сначала попробуйте варианты выше — чаще этого достаточно.');
 		o.push('— Только если не помогло: узел googlevideo тестируется ОТДЕЛЬНЫМ прогоном (в поле домена —');
 		o.push('  только имя узла). Узел: F12 → Network → фильтр videoplayback → правый клик по запросу →');
-		o.push('  Copy → Copy link address — узел опознавайте по домену, содержащему .googlevideo.com;');
+		o.push('  Copy → Copy link address — это КОНКРЕТНЫЙ узел (rrN---sn-XXXX.googlevideo.com), а НЕ домен googlevideo.com;');
 		o.push('  форма бывает разной (чаще rrN---sn-XXXX..., но префикс и номер отличаются).');
 		o.push('  Стратегию из отчёта узла добавьте ВТОРОЙ секцией — в её списке доменов укажите этот узел.');
 		elGenOut.value = o.join('\n');
@@ -1152,7 +1153,7 @@
 		if (!v) return;
 		if (!window.confirm('Применить вариант ' + v.n + ' («' + v.label + '») в Zapret2?\nСекция tspu_test будет записана в /etc/config/zapret2 (существующая заменяется), создаётся резервная копия, Zapret2 перезапустится.')) return;
 		elGenStatus.textContent = 'Применяю вариант ' + v.n + ' в Zapret2...';
-		xhr(U_APPLY + '?script=' + encodeURIComponent(v.script) + '&label=' + encodeURIComponent(v.label) + '&hostlist=' + encodeURIComponent(window.tspuApplyHostlist ? window.tspuApplyHostlist() : ''), function (t) {
+		xhr(U_APPLY + '?script=' + encodeURIComponent(v.script) + '&label=' + encodeURIComponent(v.label) + '&hostlist=' + encodeURIComponent(window.tspuApplyHostlist ? window.tspuApplyHostlist() : '') + '&domain=' + encodeURIComponent(elDomain.value), function (t) {
 			elGenStatus.textContent = (t.indexOf('state=ok') >= 0)
 				? 'Готово: вариант ' + v.n + ' применён (секция tspu_test, Zapret2 перезапущен). Проверьте сайты в браузере (Инкогнито). Откат — кнопкой ниже.'
 				: ('Ошибка применения: ' + t);

@@ -511,6 +511,8 @@ case "${1:-}" in
 	applyzapret)
 		# Применение готовой стратегии в /etc/config/zapret2 (запрос владельца проекта).
 		# Сценарий приходит в /tmp/tspu_apply.script (пишет контроллер LuCI).
+		# $2 = метка, $3 = тестируемый домен (для авто-подбора списка хостов)
+		DOM="${3:-}"
 		[ -f /tmp/tspu_apply.script ] || { echo "state=error msg=no /tmp/tspu_apply.script"; exit 1; }
 		[ -f /etc/config/zapret2 ] || { echo "state=error msg=/etc/config/zapret2 not found (Zapret2 установлен?)"; exit 1; }
 		if [ ! -s /tmp/tspu_apply.script ] || ! grep -q -- '--lua-desync' /tmp/tspu_apply.script; then
@@ -527,14 +529,20 @@ case "${1:-}" in
 		HL=""
 		[ -f /tmp/tspu_apply.hostlist ] && HL=$(head -n1 /tmp/tspu_apply.hostlist 2>/dev/null)
 		HL=$(echo "$HL" | tr -dc "A-Za-z0-9_.-")
-		if [ -z "$HL" ]; then
-			HL=$(ls -1 /opt/zapret2/ipset/zapret_hosts_*.txt 2>/dev/null | sed 's%.*/%%' | grep -im1 -E 'youtube|yt_|google|video' || true)
+		if [ -z "$HL" ] && [ -n "$DOM" ]; then
+			KW=$(echo "$DOM" | sed 's/^www\.//' | awk -F. '{print $(NF-1)}' | tr -dc 'A-Za-z0-9-')
+			[ -n "$KW" ] && HL=$(ls -1 /opt/zapret2/ipset/zapret_hosts_*.txt 2>/dev/null | sed 's%.*/%%' | grep -im1 "$KW" || true)
+			HL=${HL#zapret_hosts_}
+			HL=${HL%.txt}
+		fi
+		if [ -z "$HL" ] && echo "$DOM" | grep -qi 'youtube'; then
+			HL='youtube'
 		fi
 		# Формат RR: list hostlist '<имя списка>' - ссылка на config list '<имя>' (определяется во вкладке Списки Zapret2)
 		HL=${HL#zapret_hosts_}
 		HL=${HL%.txt}
-		if [ -n "$HL" ] && [ -f "/opt/zapret2/ipset/$HL" ]; then
-			HL_LINE="	list hostlist '/opt/zapret2/ipset/$HL'"
+		if [ -n "$HL" ]; then
+			HL_LINE="	list hostlist '$HL'"
 		else
 			HL_LINE=""
 		fi
@@ -585,7 +593,8 @@ case "${1:-}" in
 			exit 1
 		fi
 		ls -1t /tmp/zapret2.backup.* 2>/dev/null | tail -n +4 | xargs -r rm -f 2>/dev/null
-		/etc/init.d/zapret2 restart 2>/dev/null
+		/etc/init.d/zapret2 restart >/dev/null 2>&1
+		pgrep nfqws2 >/dev/null 2>&1 || { echo "state=error msg=nfqws2 not running after restart"; exit 1; }
 		echo "state=ok backup=$BK section=tspu_test zapret2=restarted"
 		;;
 	stop)

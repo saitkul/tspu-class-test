@@ -499,6 +499,8 @@ case "${1:-}" in
 		# Сценарий приходит в /tmp/tspu_apply.script (пишет контроллер LuCI).
 		[ -f /tmp/tspu_apply.script ] || { echo "state=error msg=no /tmp/tspu_apply.script"; exit 1; }
 		[ -f /etc/config/zapret2 ] || { echo "state=error msg=/etc/config/zapret2 not found (Zapret2 установлен?)"; exit 1; }
+		grep -q -- '--lua-desync' /tmp/tspu_apply.script || { echo "state=error msg=no lua-desync in script"; exit 1; }
+		grep -q -- '--lua-desync' /tmp/tspu_apply.script || { echo "state=error msg=no lua-desync in script"; exit 1; }
 		# Валидация: только строки-аргументы nfqws2 (без кавычек, $, ;, |, &, <, >, скобок)
 		if grep -qvE '^[ 	]*$|^--[A-Za-z0-9_%=:,/+.@-]+([ 	]+[A-Za-z0-9_%=:,/+.@-]+)*[ 	]*$' /tmp/tspu_apply.script; then
 			echo "state=error msg=script contains forbidden characters"
@@ -520,8 +522,7 @@ case "${1:-}" in
 			echo "	list filter_l3 'ipv4'"
 			echo "	list filter_l7 'tls'"
 			printf "	option script '"
-			awk 'NR>1{printf "
-"} {printf "%s", $0}' /tmp/tspu_apply.script
+			awk 'NR>1{printf "\n"} {printf "%s", $0}' /tmp/tspu_apply.script
 			echo "'"
 		} > "$SEC"
 		# Вставить ПЕРЕД первой существующей config strategy (first-match-wins),
@@ -534,6 +535,9 @@ case "${1:-}" in
 			cp /etc/config/zapret2.new /etc/config/zapret2.final
 		fi
 		mv /etc/config/zapret2.final /etc/config/zapret2
+		uci -q get zapret2.tspu_test.script 2>/dev/null | grep -q -- '--lua-desync' || { cp "$BK" /etc/config/zapret2; /etc/init.d/zapret2 restart 2>/dev/null; echo "state=error msg=verify failed (empty script) - restored from backup"; exit 1; }
+		# ЖЁСТКАЯ проверка: script не пуст (иначе секция-пустышка перехватит весь трафик)
+		uci -q get zapret2.tspu_test.script 2>/dev/null | grep -q -- '--lua-desync' || { cp "$BK" /etc/config/zapret2; /etc/init.d/zapret2 restart 2>/dev/null; echo "state=error msg=verify failed (empty script) - restored from backup"; exit 1; }
 		# Валидация uci: при ошибке синтаксиса - откат к бэкапу
 		if ! uci -q show zapret2 >/dev/null 2>&1; then
 			cp "$BK" /etc/config/zapret2

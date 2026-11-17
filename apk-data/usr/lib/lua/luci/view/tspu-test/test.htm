@@ -170,6 +170,14 @@
 					<p style="color:#888; margin:.4em 0 0; font-size:.92em">Секция <b>config strategy</b> — для /etc/config/zapret2 (терминал) или копирования строк в профиль. Строка script — то же самое в редакторе стратегий LuCI Zapret2. После применения перезапустите Zapret2 и проверьте в браузере (Инкогнито).</p>
 				</div>
 			</div>
+			<div class="cbi-value" id="tspu_apply_wrap" style="display:none">
+				<label class="cbi-value-title">Применить в Zapret2</label>
+				<div class="cbi-value-field">
+					<div id="tspu_apply_row" style="display:flex; flex-wrap:wrap; gap:.4em"></div>
+					<button class="btn cbi-button cbi-button-negative" onclick="tspuRollback()" style="margin-top:.4em">Откатить изменения Zapret2</button>
+					<p style="color:#888; margin:.4em 0 0; font-size:.92em">Кнопка записывает секцию <b>tspu_test</b> в /etc/config/zapret2 (в начало списка стратегий — first-match-wins), создаёт резервную копию, перезапускает Zapret2. <b>Откатить</b> возвращает конфиг из резервной копии.</p>
+				</div>
+			</div>
 		</div>
 <div class="cbi-value" style="margin-top:.6em; color:#888">
 			<span>Полные логи на роутере: /tmp/class_test.log (сырой), /tmp/class_test.log.short (краткий, для issue) — создаются при запуске теста, очищаются при перезагрузке роутера. Скрипт: /usr/bin/tspu-test.
@@ -186,6 +194,8 @@
 	var U_CLEAR  = '<%=luci.dispatcher.build_url("admin/services/tspu-test/clearlog")%>';
 	var U_LOG    = '<%=luci.dispatcher.build_url("admin/services/tspu-test/log")%>';
 	var U_DL     = '<%=luci.dispatcher.build_url("admin/services/tspu-test/download")%>';
+	var U_APPLY    = '<%=luci.dispatcher.build_url("admin/services/tspu-test/applyzapret")%>';
+	var U_ROLLBACK = '<%=luci.dispatcher.build_url("admin/services/tspu-test/rollbackzapret")%>';
 
 	var elDomain = document.getElementById('tspu_domain');
 	var elRep = document.getElementById('tspu_repeats');
@@ -736,7 +746,10 @@
 				tf.push('— Также попробуйте повторить тест с ожиданием 8 с и повторами 5.');
 				elGenOut.value = tf.join('\n');
 				elGenOutWrap.style.display = '';
-				elGenStatus.textContent = 'Рабочих строк нет, но профиль флапающий — выдана универсальная лестница.';
+				window.tspuApplyList = [{ n: 6, label: 'Универсальная лестница', script: communityTemplate().join('\n') }];
+			document.getElementById('tspu_apply_row').innerHTML = '<button class="btn cbi-button cbi-button-apply" onclick="tspuApply(6)">Вариант 6</button>';
+			document.getElementById('tspu_apply_wrap').style.display = '';
+			elGenStatus.textContent = 'Рабочих строк нет, но профиль флапающий — выдана универсальная лестница.';
 				return;
 			}
 			elGenStatus.textContent = 'В отчёте нет рабочих стратегий. Проверьте, что вставлен блок ИТОГ/ОТЧЁТ целиком.';
@@ -1022,6 +1035,23 @@
 			o = o.concat(v7);
 			o.push('   (' + v7note + ')');
 		}
+		/* Применение в Zapret2: сохранить варианты для кнопок */
+		window.tspuApplyList = [];
+		function pushVar(n, arr, label) { if (arr && arr.length) window.tspuApplyList.push({ n: n, label: label, script: arr.join('\n') }); }
+		pushVar(1, v1, 'Минимальная');
+		pushVar(2, v2, 'Усиление стабильности');
+		pushVar(3, v3, 'Оптимальная с фейком');
+		pushVar(4, v4, 'Лестница-страховка');
+		pushVar(5, v5, 'Дробилка');
+		pushVar(6, communityTemplate(), 'Универсальная лестница');
+		pushVar(7, v7, 'Дробилка-Лайт');
+		var rowHtml = '';
+		for (var ai = 0; ai < window.tspuApplyList.length; ai++) {
+			var av = window.tspuApplyList[ai];
+			rowHtml += '<button class="btn cbi-button cbi-button-apply" onclick="tspuApply(' + av.n + ')">Вариант ' + av.n + '</button>';
+		}
+		document.getElementById('tspu_apply_row').innerHTML = rowHtml;
+		document.getElementById('tspu_apply_wrap').style.display = '';
 		o.push('');
 		o.push('— Как применить: скопируйте выбранный вариант ЦЕЛИКОМ в поле script');
 		o.push('  профиля Zapret2 (многострочно — так и нужно), или секцией:');
@@ -1089,6 +1119,31 @@
 		elGenStatus.textContent = done ? 'Результат скопирован в буфер обмена' : 'Не удалось скопировать — выделите текст вручную';
 	};
 
+	window.tspuApply = function (i) {
+		var list = window.tspuApplyList || [];
+		var v = null;
+		for (var k = 0; k < list.length; k++) if (list[k].n === i) v = list[k];
+		if (!v) return;
+		if (!window.confirm('Применить вариант ' + v.n + ' («' + v.label + '») в Zapret2?\nСекция tspu_test будет записана в /etc/config/zapret2 (существующая заменяется), создаётся резервная копия, Zapret2 перезапустится.')) return;
+		elGenStatus.textContent = 'Применяю вариант ' + v.n + ' в Zapret2...';
+		xhr(U_APPLY + '?script=' + encodeURIComponent(v.script) + '&label=' + encodeURIComponent(v.label), function (t) {
+			elGenStatus.textContent = (t.indexOf('state=ok') === 0)
+				? 'Готово: вариант ' + v.n + ' применён (секция tspu_test, Zapret2 перезапущен). Проверьте сайты в браузере (Инкогнито). Откат — кнопкой ниже.'
+				: ('Ошибка применения: ' + t);
+		}, function () {
+			elGenStatus.textContent = 'Не удалось обратиться к роутеру (HTTP-ошибка).';
+		});
+	};
+	window.tspuRollback = function () {
+		if (!window.confirm('Восстановить /etc/config/zapret2 из последней резервной копии и перезапустить Zapret2?')) return;
+		xhr(U_ROLLBACK, function (t) {
+			elGenStatus.textContent = (t.indexOf('state=ok') === 0)
+				? 'Откат выполнен: конфиг восстановлен из резервной копии, Zapret2 перезапущен.'
+				: ('Ошибка отката: ' + t);
+		}, function () {
+			elGenStatus.textContent = 'Не удалось обратиться к роутеру.';
+		});
+	};
 	setInterval(update, 3000);
 	update();
 })();

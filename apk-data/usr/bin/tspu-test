@@ -494,6 +494,64 @@ case "${1:-}" in
 		make_list
 		do_start "$@"
 		;;
+	applyzapret)
+		# Применение готовой стратегии в /etc/config/zapret2 (запрос владельца проекта).
+		# Сценарий приходит в /tmp/tspu_apply.script (пишет контроллер LuCI).
+		[ -f /tmp/tspu_apply.script ] || { echo "state=error msg=no /tmp/tspu_apply.script"; exit 1; }
+		[ -f /etc/config/zapret2 ] || { echo "state=error msg=/etc/config/zapret2 not found (Zapret2 установлен?)"; exit 1; }
+		# Валидация: только строки-аргументы nfqws2 (без кавычек, $, ;, |, &, <, >, скобок)
+		if grep -qvE '^[ 	]*$|^--[A-Za-z0-9_%=:,/+.@-]+([ 	]+[A-Za-z0-9_%=:,/+.@-]+)*[ 	]*$' /tmp/tspu_apply.script; then
+			echo "state=error msg=script contains forbidden characters"
+			exit 1
+		fi
+		TS=$(date +%Y%m%d%H%M%S)
+		BK="/tmp/zapret2.backup.$TS"
+		cp /etc/config/zapret2 "$BK" 2>/dev/null || { echo "state=error msg=backup failed"; exit 1; }
+		# Убрать существующую секцию tspu_test (если есть)
+		awk '/^config strategy .tspu_test.$/{skip=1; next} /^config /{skip=0} !skip' "$BK" > /etc/config/zapret2.new
+		# Собрать новую секцию (многострочный option script)
+		SEC=/tmp/tspu_apply.section
+		{
+			echo ""
+			echo "config strategy 'tspu_test'"
+			echo "	option enabled '1'"
+			echo "	option port '443'"
+			echo "	list protocol 'tcp'"
+			echo "	list filter_l3 'ipv4'"
+			echo "	list filter_l7 'tls'"
+			printf "	option script '"
+			awk 'NR>1{printf "
+"} {printf "%s", $0}' /tmp/tspu_apply.script
+			echo "'"
+		} > "$SEC"
+		# Вставить ПЕРЕД первой существующей config strategy (first-match-wins),
+		# иначе - в конец файла
+		if grep -q '^config strategy ' /etc/config/zapret2.new; then
+			awk -v sec="$(cat "$SEC")" 'BEGIN{done=0} !done && /^config strategy /{ print sec; print ""; done=1 } {print}' /etc/config/zapret2.new > /etc/config/zapret2.final
+		else
+			echo "" >> /etc/config/zapret2.new
+			cat "$SEC" >> /etc/config/zapret2.new
+			cp /etc/config/zapret2.new /etc/config/zapret2.final
+		fi
+		mv /etc/config/zapret2.final /etc/config/zapret2
+		# Валидация uci: при ошибке синтаксиса - откат к бэкапу
+		if ! uci -q show zapret2 >/dev/null 2>&1; then
+			cp "$BK" /etc/config/zapret2
+			echo "state=error msg=uci validation failed - config restored from backup"
+			exit 1
+		fi
+		ls -1t /tmp/zapret2.backup.* 2>/dev/null | tail -n +4 | xargs -r rm -f 2>/dev/null
+		/etc/init.d/zapret2 restart 2>/dev/null
+		echo "state=ok backup=$BK section=tspu_test zapret2=restarted"
+		;;
+	rollbackzapret)
+		BK=$(ls -1t /tmp/zapret2.backup.* 2>/dev/null | head -n 1)
+		[ -n "$BK" ] && [ -f "$BK" ] || { echo "state=error msg=no backup found"; exit 1; }
+		cp "$BK" /etc/config/zapret2 || { echo "state=error msg=restore failed"; exit 1; }
+		uci -q show zapret2 >/dev/null 2>&1 || { echo "state=error msg=restored config invalid"; exit 1; }
+		/etc/init.d/zapret2 restart 2>/dev/null
+		echo "state=ok restored=$BK"
+		;;
 	stop)
 		do_stop
 		;;

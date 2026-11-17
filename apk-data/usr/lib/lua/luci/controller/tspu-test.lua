@@ -27,6 +27,10 @@ function index()
 		call("action_log")).leaf = true
 	entry({"admin", "services", "tspu-test", "download"},
 		call("action_download")).leaf = true
+	entry({"admin", "services", "tspu-test", "applyzapret"},
+		call("action_applyzapret")).leaf = true
+	entry({"admin", "services", "tspu-test", "rollbackzapret"},
+		call("action_rollbackzapret")).leaf = true
 end
 
 -- Белый список скачиваемых логов: никаких подстановок путей из запроса
@@ -116,4 +120,39 @@ end
 function action_log()
 	luci.http.prepare_content("text/plain; charset=utf-8")
 	luci.http.write(luci.sys.exec("/usr/bin/tspu-test log 2>&1"))
+end
+
+-- Применение готовой стратегии в /etc/config/zapret2 (запрос владельца проекта).
+-- Сценарий передаётся в /tmp/tspu_apply.script, вся логика - в CLI (applyzapret):
+-- валидация, резервная копия, вставка секции перед first-match-wins, uci-валидация.
+function action_applyzapret()
+	local http = luci.http
+	local lbl = tostring(http.formvalue("label") or "tspu-test"):gsub("'", "")
+	local script = tostring(http.formvalue("script") or "")
+	if #script < 8 or not script:match("^%-%-") then
+		http.prepare_content("text/plain; charset=utf-8")
+		http.write("state=error msg=script empty or does not start with --")
+		return
+	end
+	-- Запрещены метасимволы shell: кавычки, $, ;, &, |, <, >, скобки, обратная кавычка
+	if script:match("[`$;&|<>%(%)'\"]") then
+		http.prepare_content("text/plain; charset=utf-8")
+		http.write("state=error msg=script contains forbidden characters")
+		return
+	end
+	local f = io.open("/tmp/tspu_apply.script", "w")
+	if not f then
+		http.prepare_content("text/plain; charset=utf-8")
+		http.write("state=error msg=cannot write temp file")
+		return
+	end
+	f:write(script)
+	f:close()
+	http.prepare_content("text/plain; charset=utf-8")
+	http.write(luci.sys.exec(string.format("/usr/bin/tspu-test applyzapret '%s' 2>&1", lbl)))
+end
+
+function action_rollbackzapret()
+	http.prepare_content("text/plain; charset=utf-8")
+	http.write(luci.sys.exec("/usr/bin/tspu-test rollbackzapret 2>&1"))
 end

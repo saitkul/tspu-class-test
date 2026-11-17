@@ -546,7 +546,19 @@ case "${1:-}" in
 		else
 			HL_LINE=""
 		fi
-		grep -q -- '--lua-desync' /tmp/tspu_apply.script || { echo "state=error msg=no lua-desync in script"; exit 1; }
+		# Прозрачность: чем реально станет ссылка (RR ищет config list '<имя>' с option path во вкладке Списки)
+		HLSTATE=""; LP=""; HLN=""
+		if [ -n "$HL" ]; then
+			LP=$(uci -q get "zapret2.$HL.path" 2>/dev/null)
+			if [ -n "$LP" ] && [ -f "$LP" ]; then
+				HLN=$(wc -l < "$LP" 2>/dev/null | tr -dc '0-9')
+				HLSTATE="resolved"
+			elif [ -n "$LP" ]; then
+				HLSTATE="file_missing"
+			else
+				HLSTATE="unresolved"
+			fi
+		fi
 		# Валидация: только строки-аргументы nfqws2 (без кавычек, $, ;, |, &, <, >, скобок)
 		if grep -qvE '^[ 	]*$|^--[A-Za-z0-9_%=:,/+.@-]+([ 	]+[A-Za-z0-9_%=:,/+.@-]+)*[ 	]*$' /tmp/tspu_apply.script; then
 			echo "state=error msg=script contains forbidden characters"
@@ -568,7 +580,6 @@ case "${1:-}" in
 			echo "	list filter_l3 'ipv4'"
 			echo "	list filter_l7 'tls'"
 			[ -n "$HL_LINE" ] && echo "$HL_LINE"
-			echo "	list filter_l7 'tls'"
 			printf "	option script '"
 			awk 'NR>1{printf "\n"} {printf "%s", $0}' /tmp/tspu_apply.script
 			echo "'"
@@ -587,7 +598,6 @@ case "${1:-}" in
 		if [ -n "$HL" ] && [ ! -f "/opt/zapret2/ipset/zapret_hosts_$HL.txt" ] && [ -f "/opt/zapret2/ipset/zapret_hosts_$HL.txt.default" ]; then
 			cp "/opt/zapret2/ipset/zapret_hosts_$HL.txt.default" "/opt/zapret2/ipset/zapret_hosts_$HL.txt"
 		fi
-		uci -q get zapret2.tspu_test.script 2>/dev/null | grep -q -- '--lua-desync' || { cp "$BK" /etc/config/zapret2; /etc/init.d/zapret2 restart 2>/dev/null; echo "state=error msg=verify failed (empty script) - restored from backup"; exit 1; }
 		# ЖЁСТКАЯ проверка: script не пуст (иначе секция-пустышка перехватит весь трафик)
 		uci -q get zapret2.tspu_test.script 2>/dev/null | grep -q -- '--lua-desync' || { cp "$BK" /etc/config/zapret2; /etc/init.d/zapret2 restart 2>/dev/null; echo "state=error msg=verify failed (empty script) - restored from backup"; exit 1; }
 		# Валидация uci: при ошибке синтаксиса - откат к бэкапу
@@ -599,7 +609,12 @@ case "${1:-}" in
 		ls -1t /tmp/zapret2.backup.* 2>/dev/null | tail -n +4 | xargs -r rm -f 2>/dev/null
 		/etc/init.d/zapret2 restart >/dev/null 2>&1
 		pgrep nfqws2 >/dev/null 2>&1 || { echo "state=error msg=nfqws2 not running after restart"; exit 1; }
-		echo "state=ok backup=$BK section=tspu_test zapret2=restarted"
+		case "$HLSTATE" in
+			resolved) echo "state=ok backup=$BK section=tspu_test zapret2=restarted hostlist=$HL resolved=$LP hosts=${HLN:-?}" ;;
+			file_missing) echo "state=ok backup=$BK section=tspu_test zapret2=restarted hostlist=$HL resolved=$LP file_missing=1" ;;
+			unresolved) echo "state=ok backup=$BK section=tspu_test zapret2=restarted hostlist=$HL unresolved=1" ;;
+			*) echo "state=ok backup=$BK section=tspu_test zapret2=restarted hostlist=none" ;;
+		esac
 		;;
 	stop)
 		do_stop

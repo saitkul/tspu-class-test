@@ -1154,9 +1154,17 @@
 		if (!window.confirm('Применить вариант ' + v.n + ' («' + v.label + '») в Zapret2?\nСекция tspu_test будет записана в /etc/config/zapret2 (существующая заменяется), создаётся резервная копия, Zapret2 перезапустится.')) return;
 		elGenStatus.textContent = 'Применяю вариант ' + v.n + ' в Zapret2...';
 		xhr(U_APPLY + '?script=' + encodeURIComponent(v.script) + '&label=' + encodeURIComponent(v.label) + '&hostlist=' + encodeURIComponent(window.tspuApplyHostlist ? window.tspuApplyHostlist() : '') + '&domain=' + encodeURIComponent(elDomain.value), function (t) {
-			elGenStatus.textContent = (t.indexOf('state=ok') >= 0)
-				? 'Готово: вариант ' + v.n + ' применён (секция tspu_test, Zapret2 перезапущен). Проверьте сайты в браузере (Инкогнито). Откат — кнопкой ниже.'
-				: ('Ошибка применения: ' + t);
+			if (t.indexOf('state=ok') < 0) { elGenStatus.textContent = 'Ошибка применения: ' + t; return; }
+			var mh = t.match(/hostlist=([A-Za-z0-9_.-]+)/), hl = mh ? mh[1] : '';
+			var mr = t.match(/resolved=(\S+)/), res = mr ? mr[1] : '';
+			var mn = t.match(/hosts=(\d+)/);
+			var hlMsg = ' Список хостов: не задан — стратегия действует на все сайты TLS:443.';
+			if (hl && hl !== 'none') {
+				if (/unresolved=1/.test(t)) hlMsg = ' Внимание: список «' + hl + '» не найден во вкладке Списки Zapret2 — файл не подставится, стратегия действует на ВСЕ сайты TLS:443 (без ограничения по доменам). Создайте список с таким именем во вкладке Списки, либо оставьте как есть.';
+				else if (/file_missing=1/.test(t)) hlMsg = ' Внимание: список «' + hl + '» найден, но его файл (' + res + ') отсутствует — проверьте вкладку Списки Zapret2.';
+				else if (res) hlMsg = ' Список «' + hl + '» подключён: ' + res + (mn ? ' (' + mn[1] + ' строк)' : '') + ' — стратегия действует только на домены из него.';
+			}
+			elGenStatus.textContent = 'Готово: вариант ' + v.n + ' применён (секция tspu_test, Zapret2 перезапущен).' + hlMsg + ' Проверьте сайты в браузере (Инкогнито).';
 		}, function () {
 			elGenStatus.textContent = 'Не удалось обратиться к роутеру (HTTP-ошибка).';
 		});

@@ -21,11 +21,17 @@ elif command -v apk >/dev/null 2>&1; then
     PKG_MGR="apk"
 fi
 
-# --- 2. Найти пакет: локально рядом или в /tmp ---
+# --- 2. Найти пакет: локально рядом или в /tmp (формат под менеджер приоритетнее) ---
 find_pkg() {
-    for f in "$DIR"/*all.ipk "$DIR"/*noarch.apk /tmp/$PKG*.ipk /tmp/$PKG*.apk; do
-        [ -f "$f" ] && { echo "$f"; return 0; }
-    done
+    if [ "$PKG_MGR" = "apk" ]; then
+        for f in "$DIR"/*.apk /tmp/$PKG*.apk "$DIR"/*all.ipk /tmp/$PKG*.ipk; do
+            [ -f "$f" ] && { echo "$f"; return 0; }
+        done
+    else
+        for f in "$DIR"/*all.ipk /tmp/$PKG*.ipk "$DIR"/*.apk /tmp/$PKG*.apk; do
+            [ -f "$f" ] && { echo "$f"; return 0; }
+        done
+    fi
     return 1
 }
 

@@ -825,14 +825,37 @@
 			elGenStatus.textContent = 'Вставьте отчёт — или нажмите «Вставить отчёт последнего теста»';
 			return;
 		}
-		/* Селектор «Источник» имеет смысл только если в отчёте есть v6-данные:
-		   без них он скрывается и источник принудительно IPv4. */
+		/* Источник — явный выбор пользователя. Если выбран IPv6, а в отчёте
+		   нет v6-данных — ЧЕСТНЫЙ отказ: предупреждение вместо стратегий. */
 		var hasV6 = raw.indexOf('=== РЕЗУЛЬТАТЫ IPv6 ===') >= 0 ||
 			raw.indexOf('- curl_test_https_tls12 ipv6 ') >= 0 ||
 			raw.indexOf('- curl_test_https_tls13 ipv6 ') >= 0;
 		var selIp = document.getElementById('tspu_gen_ipsrc');
-		if (selIp) selIp.style.display = hasV6 ? '' : 'none';
-		if (!hasV6) window.tspuGenIpSource = 'ipv4';
+		var wantV6 = !!(selIp && selIp.value === 'ipv6');
+		window.tspuGenIpSource = wantV6 ? 'ipv6' : 'ipv4';
+		if (wantV6 && !hasV6) {
+			elGenOut.value = [
+				'=== IPv6: В ОТЧЁТЕ НЕТ ДАННЫХ ===',
+				'',
+				'Прогон по IPv6 не выполнялся. Возможные причины:',
+				'— тест шёл без галочки «IPv6-проба»;',
+				'— в сети нет IPv6 (нет глобального адреса или маршрута — тест тогда',
+				'  пишет «IPv6: ... проба пропущена (тест только по IPv4)»);',
+				'— у домена нет AAAA-записи либо v6-связность до него отсутствует.',
+				'',
+				'Стратегии для IPv6 НЕ СОБРАНЫ: молча подставлять IPv4-данные было бы обманом.',
+				'Чтобы собрать настоящие IPv6-стратегии:',
+				'1) включите IPv6 на роутере/сети;',
+				'2) прогоните тест с галочкой «IPv6-проба»;',
+				'3) вставьте отчёт с блоком «=== РЕЗУЛЬТАТЫ IPv6 ===» и выберите «Источник: IPv6».'
+			].join('\n');
+			elGenOutWrap.style.display = '';
+			window.tspuApplyList = [];
+			var aw = document.getElementById('tspu_apply_wrap');
+			if (aw) aw.style.display = 'none';
+			elGenStatus.textContent = 'IPv6-данных в отчёте нет — стратегии не собраны (источник: IPv6). Верните «Источник: IPv4» для обычной генерации.';
+			return;
+		}
 		var parsed;
 		try { parsed = genParse(raw); }
 		catch (err) {

@@ -367,6 +367,10 @@ AWK
 		fi
 	fi
 	TOTAL=$(( NLINES * 2 * NUMDOM * NFAMS ))
+	# Оценка времени: попыток NLINES*2*NFAMS*REP на домен, каждая ~TMO+2 с, плюс запуск и проверка адаптивности
+	ESTS=$(awk -v n="$NLINES" -v r="$REP" -v d="$NUMDOM" -v f="$NFAMS" -v t="$TMO" 'BEGIN { printf "%d", n*2*f*r*d*(t+2)+40 }')
+	ESTMIN=$(( ESTS / 60 + 1 ))
+	echo "Оценка времени: тест займёт примерно ${ESTMIN} мин (стратегий: $NLINES, повторов: $REP, ожидание: ${TMO} с, доменов: $NUMDOM; плюс проверка адаптивности)."
 	T0=$(date +%s)
 	DOMNUM=0
 
@@ -711,7 +715,7 @@ _val_report() {
 	while IFS= read -r A; do
 		[ -z "$A" ] && continue
 		i=$((i+1)); NALL=$((NALL+1))
-		AV=$(grep -A1 -F -- "nfqws2 $A" "$VAL_LOG" 2>/dev/null | grep -c "!!!!! AVAILABLE")
+		AV=$(awk -v pat="nfqws2 $A" 'index($0, pat) > 0 { f=1; next } /^- curl_test/ { f=0 } f && /!!!!! AVAILABLE !!!!!/ { c++ } END { print c+0 }' "$VAL_LOG" 2>/dev/null)
 		if [ "$AV" -ge 2 ]; then V="ПРОШЛА (обе версии TLS)"; NOK=$((NOK+1))
 		elif [ "$AV" -eq 1 ]; then V="ПРОШЛА только на одной версии TLS"; NOK=$((NOK+1))
 		else V="НЕ прошла"; fi
@@ -764,7 +768,7 @@ do_validate_start() {
 	# Стратегия вставляется ЦЕЛИКОМ (многострочно, как в поле script Zapret2):
 	# все непустые строки склеиваются пробелами в ОДНУ стратегию. CRLF из
 	# браузерного textarea ломает сравнение строк - убираем.
-	tr -d '\r' < /tmp/tspu_validate.txt | grep -vE '^[[:space:]]*(#|$)' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | tr '\n' ' ' | tr -s ' ' > /tmp/tspu_validate_norm.txt
+	tr -d '\r' < /tmp/tspu_validate.txt | grep -vE '^[[:space:]]*(#|$)' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | tr '\n' ' ' | tr -s ' ' | sed 's/ $//' > /tmp/tspu_validate_norm.txt
 	echo >> /tmp/tspu_validate_norm.txt
 	grep -q . /tmp/tspu_validate_norm.txt || { echo "state=error msg=no strategy rows"; exit 1; }
 	echo "state=starting" > "$VAL_STATUS"
@@ -788,6 +792,11 @@ _canary() {
 	DOM=$1; IV=$2
 	echo $$ > "$CAN_PIDF"
 	trap 'rm -f "$CAN_PIDF"' EXIT INT TERM
+	if [ -f "$CAN_LOG" ] && [ "$(wc -c < "$CAN_LOG" 2>/dev/null)" -gt 204800 ]; then
+		tail -c 30720 "$CAN_LOG" > "$CAN_LOG.tmp" 2>/dev/null
+		echo "$(date '+%Y-%m-%d %H:%M:%S') — (старые записи обрезаны, лог превысил 200 КБ)" >> "$CAN_LOG.tmp"
+		mv "$CAN_LOG.tmp" "$CAN_LOG"
+	fi
 	echo "$(date '+%Y-%m-%d %H:%M:%S') — канарейка запущена: домен $DOM, проверка каждые ${IV} с" >> "$CAN_LOG"
 	while true; do
 		if pgrep nfqws2 >/dev/null 2>&1; then

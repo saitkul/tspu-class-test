@@ -7,7 +7,7 @@
 #  TLS 1.2 + 1.3, SCANLEVEL=force), печатает вердикт «КЛАСС ТСПУ».
 #
 #  Команды:
-#    tspu-test start [ДОМЕН(Ы)] [ПОВТОРОВ] [ОЖИДАНИЕ_С]  фоновый запуск
+#    tspu-test start [ДОМЕН(Ы)] [ПОВТОРОВ] [ОЖИДАНИЕ_С] [ipv6]  фоновый запуск (4-й арг: "ipv6" = прогон и по IPv6)
 #        несколько доменов - через пробел, каждый тестируется отдельно
 #    tspu-test stop                                      остановить (Zapret2 вернётся)
 #    tspu-test status                                    строки state=/progress=/elapsed=/alive=
@@ -54,7 +54,7 @@ do_start() {
 	echo "state=starting" > "$STATUS"
 	# Фоновый запуск без nohup/setsid: rpcd (LuCI) и dropbear не рассылают
 	# HUP своим фоновым детям с перенаправленным stdio - процесс живёт.
-	/bin/sh -c "/usr/bin/tspu-test _run \"$DOM\" \"$REP\" \"$TMO\" > $RUNLOG 2>&1 &"
+	/bin/sh -c "/usr/bin/tspu-test _run \"$DOM\" \"$REP\" \"$TMO\" \"$4\" > $RUNLOG 2>&1 &"
 	sleep 1
 	if pid_alive; then
 		echo "state=started"
@@ -114,11 +114,12 @@ do_run() {
 	DOM=${1:-www.youtube.com}
 	REP=${2:-3}
 	TMO=${3:-2.5}
+	WANT6=${4:-}
 	S=$LIST
 	A=$AWKF
 	L=/tmp/class_test.log
 	RFULL=/tmp/class_report.txt
-	SCRIPT_VER="TSPU test @APP_VERSION@ (ядро tspu-class-test v2.5): 31 стратегия, SCANLEVEL=force"
+	SCRIPT_VER="TSPU test @APP_VERSION@ (ядро tspu-class-test v2.6): 31 стратегия, IPv6-проба, SCANLEVEL=force"
 
 	echo $$ > "$PIDF"
 
@@ -149,7 +150,7 @@ do_run() {
 	cat > $A <<'AWK'
 function norm(x) { gsub(/\r/, "", x); gsub(/[ \t]+/, " ", x); sub(/^ /, "", x); sub(/ $/, "", x); return x }
 NR==FNR { x = norm($0); if (x != "" && substr(x, 1, 1) != "#") { n++; lst[n] = x } next }
-/^- curl_test_https_tls1[23] ipv4 / {
+/^- curl_test_https_tls1[23] ipv[46] / {
   cur = ""
   i = index($0, " : nfqws2 ")
   if (i > 0) {
@@ -326,7 +327,18 @@ AWK
 
 	NLINES=$(grep -cvE '^[[:space:]]*(#|$)' "$S")
 	NUMDOM=$(echo "$DOM" | wc -w)
-	TOTAL=$(( NLINES * 2 * NUMDOM ))
+	# IPv6-проба: глобальная v6-адресация и маршрут по умолчанию обязательны
+	NFAMS=1
+	FAMS="ipv4"
+	if [ "$WANT6" = "ipv6" ]; then
+		if ip -6 route show default 2>/dev/null | grep -q . && ip -6 addr show scope global 2>/dev/null | grep -qw inet6; then
+			FAMS="$FAMS ipv6"
+			NFAMS=2
+		else
+			echo "IPv6: глобального адреса или маршрута по умолчанию нет - IPv6-проба пропущена (тест только по IPv4)."
+		fi
+	fi
+	TOTAL=$(( NLINES * 2 * NUMDOM * NFAMS ))
 	T0=$(date +%s)
 	DOMNUM=0
 
@@ -335,59 +347,80 @@ AWK
 
 	for CURDOM in $DOM; do
 		DOMNUM=$((DOMNUM+1))
-		DL=/tmp/class_test.log.d$DOMNUM
-		R=/tmp/class_report.d$DOMNUM
-		rm -f $R
-
-		BATCH=1 SCANLEVEL=force TEST=custom LIST_HTTPS_TLS12=$S LIST_HTTPS_TLS13=$S DOMAINS="$CURDOM" IPVS=4 ENABLE_HTTP=0 ENABLE_HTTPS_TLS12=1 ENABLE_HTTPS_TLS13=1 ENABLE_HTTP3=0 REPEATS=$REP CURL_HTTPS_GET=1 CURL_MAX_TIME="$TMO" ./blockcheck2.sh > $DL 2>&1 &
-		BPID=$!
-		while kill -0 "$BPID" 2>/dev/null; do
-			DONE_D=$(grep -c '^- curl_test_https_tls1[23] .* : nfqws2 ' $DL 2>/dev/null)
-			# На один домен идёт NLINES стратегий x 2 протокола:
-			# без x2 счётчик застревает на половине (баг «16 из 32»)
-			[ "$DONE_D" -gt $(( NLINES * 2 )) ] 2>/dev/null && DONE_D=$(( NLINES * 2 ))
-			DONE=$(( (DOMNUM-1) * NLINES * 2 + DONE_D ))
-			EL=$(( $(date +%s) - T0 ))
-			ELF=$(printf '%d:%02d' $((EL / 60)) $((EL % 60)))
-			prog "$DONE" "$TOTAL" "$ELF" "$CURDOM"
-			# Статус для LuCI обновляется и при терминальном запуске -
-			# иначе страница показывает «Готово» при живом тесте
-			echo "state=running progress=$DONE/$TOTAL elapsed=$EL domain=$CURDOM" > "$STATUS"
-			sleep 2
-		done
-		wait "$BPID" 2>/dev/null
-
-		cat $DL >> $L
-
-		NB12=0; NB13=0
-		grep -q "curl_test_https_tls12 .*working without bypass" $DL && NB12=1
-		grep -q "curl_test_https_tls13 .*working without bypass" $DL && NB13=1
+		rm -f /tmp/class_report.d$DOMNUM /tmp/class_report.d$DOMNUM.ipv*
 
 		echo
 		echo "=== ИТОГ (домен: $CURDOM, повторов: $REP, ожидание: $TMO с) ==="
 		echo "=== ДОМЕН $DOMNUM из $NUMDOM: $CURDOM ===" >> $RFULL
-		echo "Тест: $CURDOM, повторов $REP, ожидание $TMO с, IPv4, SCANLEVEL=force" >> $RFULL
-		if [ $NB12 = 1 ] && [ $NB13 = 1 ]; then
-			echo "Результат: $CURDOM открывается без обхода (стратегии всё равно проверены, SCANLEVEL=force)." > $R
-			echo "ВНИМАНИЕ: $CURDOM открывается и без обхода. Сканирование шло в режиме SCANLEVEL=force, стратегии проверены."
-			echo "Если тормозит или не грузится видео - дело обычно в видеодомене googlevideo.com, а не в www.youtube.com."
-		elif ! grep -q "^\* SUMMARY" $DL; then
-			echo "Результат: тест не завершился (в логе нет блока SUMMARY)." > $R
-			echo "ТЕСТ НЕ ЗАВЕРШИЛСЯ (в логе нет блока SUMMARY). Пришлите краткий лог."
-		else
-			awk -v rep="$REP" -v rpt="$R" -f $A $S $DL
-			[ -s $R ] || echo "Результат: в логе нет строк из списка." > $R
-			if [ $NB12 = 1 ]; then
-				echo "TLS 1.2: открывается без обхода (стратегии всё равно проверены, SCANLEVEL=force)."
-				echo "TLS 1.2: открывается без обхода (стратегии всё равно проверены)." >> $R
+		IPLBL="IPv4"
+		[ "$NFAMS" = 2 ] && IPLBL="IPv4+IPv6"
+		echo "Тест: $CURDOM, повторов $REP, ожидание $TMO с, $IPLBL, SCANLEVEL=force" >> $RFULL
+
+		for FAM in $FAMS; do
+			IPVS=${FAM#ipv}
+			DLF=/tmp/class_test.log.d$DOMNUM.$FAM
+			RLF=/tmp/class_report.d$DOMNUM.$FAM
+			rm -f "$DLF" "$RLF"
+
+			BATCH=1 SCANLEVEL=force TEST=custom LIST_HTTPS_TLS12=$S LIST_HTTPS_TLS13=$S DOMAINS="$CURDOM" IPVS=$IPVS ENABLE_HTTP=0 ENABLE_HTTPS_TLS12=1 ENABLE_HTTPS_TLS13=1 ENABLE_HTTP3=0 REPEATS=$REP CURL_HTTPS_GET=1 CURL_MAX_TIME="$TMO" ./blockcheck2.sh > "$DLF" 2>&1 &
+			BPID=$!
+			while kill -0 "$BPID" 2>/dev/null; do
+				DONE_D=$(cat /tmp/class_test.log.d$DOMNUM.ipv4 /tmp/class_test.log.d$DOMNUM.ipv6 2>/dev/null | grep -c '^- curl_test_https_tls1[23] .* : nfqws2 ')
+				# На один домен идёт NLINES стратегий x 2 протокола x NFAMS версий IP
+				[ "$DONE_D" -gt $(( NLINES * 2 * NFAMS )) ] 2>/dev/null && DONE_D=$(( NLINES * 2 * NFAMS ))
+				DONE=$(( (DOMNUM-1) * NLINES * 2 * NFAMS + DONE_D ))
+				EL=$(( $(date +%s) - T0 ))
+				ELF=$(printf '%d:%02d' $((EL / 60)) $((EL % 60)))
+				prog "$DONE" "$TOTAL" "$ELF" "$CURDOM ($FAM)"
+				# Статус для LuCI обновляется и при терминальном запуске -
+				# иначе страница показывает «Готово» при живом тесте
+				echo "state=running progress=$DONE/$TOTAL elapsed=$EL domain=$CURDOM" > "$STATUS"
+				sleep 2
+			done
+			wait "$BPID" 2>/dev/null
+
+			cat "$DLF" >> $L
+
+			FAMLBL=$(echo "$FAM" | tr 'a-z' 'A-Z')
+			if [ "$NFAMS" = 2 ]; then
+				echo
+				echo "=== РЕЗУЛЬТАТЫ $FAMLBL ==="
 			fi
-			if [ $NB13 = 1 ]; then
-				echo "TLS 1.3: открывается без обхода (стратегии всё равно проверены, SCANLEVEL=force)."
-				echo "TLS 1.3: открывается без обхода (стратегии всё равно проверены)." >> $R
+			if [ "$FAM" = "ipv6" ] && ! grep -q "curl_test_https_tls12 ipv6" "$DLF" 2>/dev/null; then
+				echo "IPv6: домен не резолвится по AAAA или v6-связность отсутствует - пробы не выполнялись."
+				continue
 			fi
-		fi
-		cat $R >> $RFULL
-		rm -f $R
+
+			NB12=0; NB13=0
+			grep -q "curl_test_https_tls12 .*working without bypass" "$DLF" && NB12=1
+			grep -q "curl_test_https_tls13 .*working without bypass" "$DLF" && NB13=1
+
+			if [ $NB12 = 1 ] && [ $NB13 = 1 ]; then
+				echo "Результат: $CURDOM открывается без обхода (стратегии всё равно проверены, SCANLEVEL=force)."
+				echo "ВНИМАНИЕ: $CURDOM открывается и без обхода. Сканирование шло в режиме SCANLEVEL=force, стратегии проверены."
+				echo "Если тормозит или не грузится видео - дело обычно в видеодомене googlevideo.com, а не в www.youtube.com."
+				echo "Результат: $CURDOM открывается без обхода (стратегии всё равно проверены, SCANLEVEL=force)." > "$RLF"
+			elif ! grep -q "^\* SUMMARY" "$DLF"; then
+				echo "ТЕСТ НЕ ЗАВЕРШИЛСЯ (в логе нет блока SUMMARY). Пришлите краткий лог."
+				echo "Результат: тест не завершился (в логе нет блока SUMMARY)." > "$RLF"
+			else
+				awk -v rep="$REP" -v rpt="$RLF" -f $A $S "$DLF"
+				[ -s "$RLF" ] || echo "Результат: в логе нет строк из списка." > "$RLF"
+				if [ $NB12 = 1 ]; then
+					echo "TLS 1.2: открывается без обхода (стратегии всё равно проверены, SCANLEVEL=force)."
+					echo "TLS 1.2: открывается без обхода (стратегии всё равно проверены)." >> "$RLF"
+				fi
+				if [ $NB13 = 1 ]; then
+					echo "TLS 1.3: открывается без обхода (стратегии всё равно проверены, SCANLEVEL=force)."
+					echo "TLS 1.3: открывается без обхода (стратегии всё равно проверены)." >> "$RLF"
+				fi
+			fi
+			if [ -f "$RLF" ]; then
+				if [ "$NFAMS" = 2 ]; then echo "=== РЕЗУЛЬТАТЫ $FAMLBL ===" >> $RFULL; fi
+				cat "$RLF" >> $RFULL
+				rm -f "$RLF"
+			fi
+		done
 	done
 
 	# По завершении теста убрать служебные строки запуска из вывода.
@@ -577,7 +610,15 @@ case "${1:-}" in
 			echo "	option enabled '1'"
 			echo "	option port '443'"
 			echo "	list protocol 'tcp'"
-			echo "	list filter_l3 'ipv4'"
+			# Фильтр L3: ipv4 | ipv6 | both (файл пишет контроллер LuCI, по умолчанию ipv4)
+			L3="ipv4"
+			[ -f /tmp/tspu_apply.l3 ] && L3=$(head -n1 /tmp/tspu_apply.l3 2>/dev/null | tr -dc 'a-z')
+			case "$L3" in
+				ipv6) echo "	list filter_l3 'ipv6'" ;;
+				both) echo "	list filter_l3 'ipv4'"
+					echo "	list filter_l3 'ipv6'" ;;
+				*) echo "	list filter_l3 'ipv4'" ;;
+			esac
 			echo "	list filter_l7 'tls'"
 			[ -n "$HL_LINE" ] && echo "$HL_LINE"
 			printf "	option script '"
@@ -635,7 +676,7 @@ case "${1:-}" in
 		;;
 	*)
 		echo "TSPU test - определение класса ТСПУ провайдера (ядро tspu-class-test v2.2)"
-		echo "Использование: tspu-test start [ДОМЕН(Ы)] [ПОВТОРОВ] [ОЖИДАНИЕ_С] | stop | status | log | clearlog"
+		echo "Использование: tspu-test start [ДОМЕН(Ы)] [ПОВТОРОВ] [ОЖИДАНИЕ_С] [ipv6] | stop | status | log | clearlog"
 		exit 1
 		;;
 esac

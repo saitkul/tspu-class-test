@@ -90,6 +90,12 @@
 			</div>
 		</div>
 		<div class="cbi-value">
+			<label class="cbi-value-title" for="tspu_ipv6">IPv6-проба</label>
+			<div class="cbi-value-field">
+				<input id="tspu_ipv6" type="checkbox" /> Дополнительно прогнать корпус по IPv6 (вдвое дольше). Нужна, если сайт/видео доступны и по v6: класс ТСПУ и рабочие строки на v6 могут отличаться от IPv4.
+			</div>
+		</div>
+		<div class="cbi-value">
 			<label class="cbi-value-title">Управление</label>
 			<div class="cbi-value-field">
 				<button id="tspu_btn_start" class="btn cbi-button" onclick="tspuStart()">Запустить тест</button>
@@ -158,6 +164,10 @@
 				<label class="cbi-value-title" for="tspu_gen_input">Отчёт для генерации (ИТОГ/ОТЧЁТ от TSPU test, «Рабочие стратегии» от blockcheckw или его *_check.json)</label>
 				<div class="cbi-value-field">
 					<textarea id="tspu_gen_input" wrap="off" style="width:100%; height:200px; font-family:monospace; white-space:pre; padding:.5em" placeholder="Вставьте сюда отчёт — или нажмите «Вставить отчёт последнего теста»"></textarea>
+					<select id="tspu_gen_ipsrc" class="cbi-input-select" style="width:auto; margin:.3em .5em 0 0" title="Какая версия IP из отчёта используется (актуально, если тест шел с IPv6-пробой)">
+						<option value="ipv4" selected="selected">Источник: IPv4</option>
+						<option value="ipv6">Источник: IPv6</option>
+					</select>
 					<button class="btn cbi-button cbi-button-neutral" onclick="tspuGenFetch()">Вставить отчёт последнего теста</button>
 					<button class="btn cbi-button cbi-button-apply" onclick="tspuGenerate()">Сгенерировать стратегии</button>
 					<button class="btn cbi-button cbi-button-neutral" onclick="tspuGenClear()">Очистить</button>
@@ -177,6 +187,11 @@
 				<div class="cbi-value-field">
 					<label style="font-size:.92em; color:#888">Список хостов для секции: </label>
 					<input id="tspu_hl_input" type="text" placeholder="пусто = авто по домену (или имя списка: discord, amdm...)" style="max-width:420px">
+					<select id="tspu_l3_sel" class="cbi-input-select" style="width:auto; margin:.3em .5em 0 0" title="На какой версии IP действует секция (если тест был и по IPv6 - выбирайте по его вердикту)">
+						<option value="ipv4" selected="selected">Фильтр L3: IPv4</option>
+						<option value="ipv6">Фильтр L3: IPv6</option>
+						<option value="both">Фильтр L3: IPv4+IPv6</option>
+					</select>
 					<div id="tspu_apply_row" style="display:flex; flex-wrap:wrap; gap:.4em"></div>
 					<button class="btn cbi-button cbi-button-negative" onclick="tspuRemove()" style="margin-top:.4em">Удалить секцию tspu_test</button>
 					<p style="color:#888; margin:.4em 0 0; font-size:.92em">Кнопка записывает секцию <b>tspu_test</b> в /etc/config/zapret2 (в начало списка стратегий — first-match-wins), создаёт резервную копию конфига, перезапускает Zapret2. <b>Удалить</b> убирает секцию tspu_test целиком (списки хостов не трогаются). Список хостов подставляется по тестируемому домену (youtube → список youtube).
@@ -463,7 +478,8 @@
 		elDomain.value = doms[0];
 		var url = U_START + '?domain=' + encodeURIComponent(elDomain.value) +
 			'&repeats=' + encodeURIComponent(elRep.value) +
-			'&wait=' + encodeURIComponent(elWait.value);
+			'&wait=' + encodeURIComponent(elWait.value) +
+			'&ipv6=' + (function () { var e = document.getElementById('tspu_ipv6'); return e && e.checked ? '1' : '0'; })();
 		/* Кнопки гаснут сразу по клику; дальше их держит лог (applyLog).
 		   Любой сбой запуска теперь ВИДЕН: ошибка CLI, пустой или
 		   неожиданный ответ, недоступность роутера. */
@@ -602,6 +618,25 @@
 			return { base: base, alts: alts, cls: '', reco: {}, stable: {}, working: {} };
 		}
 		var lines = clean.split('\n');
+		/* IPv6 (2.4): в отчёте с IPv6-пробой блоки размечены маркерами
+		   «=== РЕЗУЛЬТАТЫ IPv4 ===» / «=== РЕЗУЛЬТАТЫ IPv6 ===».
+		   Селектор «Источник» выбирает, какой блок парсить; по умолчанию IPv4. */
+		var wantIp = window.tspuGenIpSource === 'ipv6' ? 'ipv6' : 'ipv4';
+		var hasM4 = false, hasM6 = false, zi;
+		for (zi = 0; zi < lines.length; zi++) {
+			if (lines[zi].indexOf('=== РЕЗУЛЬТАТЫ IPv4 ===') === 0) hasM4 = true;
+			if (lines[zi].indexOf('=== РЕЗУЛЬТАТЫ IPv6 ===') === 0) hasM6 = true;
+		}
+		if (hasM4 || hasM6) {
+			var flt = [], curIp = null;
+			for (zi = 0; zi < lines.length; zi++) {
+				var lz = lines[zi];
+				if (lz.indexOf('=== РЕЗУЛЬТАТЫ IPv4 ===') === 0) { curIp = 'ipv4'; continue; }
+				if (lz.indexOf('=== РЕЗУЛЬТАТЫ IPv6 ===') === 0) { curIp = 'ipv6'; continue; }
+				if (curIp === null || curIp === wantIp) flt.push(lz);
+			}
+			if (flt.length) { clean = flt.join('\n'); lines = flt; }
+		}
 		/* Сырой лог blockcheck2 (class_test.log / short / «Полный лог»):
 		   «- curl_test_https_tls12 ipv4 X : nfqws2 <args>» + попытки.
 		   Стратегия стабильна, если ВСЕ попытки AVAILABLE. Результаты
@@ -654,10 +689,10 @@
 			}
 			for (var ri = 0; ri < lines.length; ri++) {
 				var rl = lines[ri];
-				var rm = rl.match(/^- curl_test_https_(tls12|tls13|http) ipv4 \S+ : nfqws2 (.+)$/);
-				if (rm) {
+				var rm = rl.match(/^- curl_test_https_(tls12|tls13|http) (ipv4|ipv6) \S+ : nfqws2 (.+)$/);
+				if (rm && rm[2] === wantIp) {
 					flushR();
-					rProto = rm[1]; rArgs = genEscape(rm[2]); rOk = 0; rTot = 0; rSeen = false;
+					rProto = rm[1]; rArgs = genEscape(rm[3]); rOk = 0; rTot = 0; rSeen = false;
 					continue;
 				}
 				if (!rArgs) continue;
@@ -767,6 +802,15 @@
 			.map(function (n) { return { args: working[n], note: 'строка ' + n }; });
 		return { base: base, alts: alts, cls: cls, clsMap: clsMap, flap: flap, reco: reco, stable: stable, working: working, baseNum: baseNum };
 	}
+
+	window.tspuGenIpSource = 'ipv4';
+	window.tspuRegen = function () {
+		var e = document.getElementById('tspu_gen_ipsrc');
+		window.tspuGenIpSource = e && e.value === 'ipv6' ? 'ipv6' : 'ipv4';
+		/* Перегенерация только если результат уже показан */
+		var w = document.getElementById('tspu_gen_out_wrap');
+		if (w && w.style.display !== 'none') tspuGenerate();
+	};
 
 	window.tspuGenerate = function () {
 		var raw = elGenInput.value || '';
@@ -1167,6 +1211,11 @@
 		elGenStatus.textContent = done ? 'Результат скопирован в буфер обмена' : 'Не удалось скопировать — выделите текст вручную';
 	};
 
+	window.tspuApplyL3 = function () {
+		var e = document.getElementById('tspu_l3_sel');
+		return e && (e.value === 'ipv6' || e.value === 'both') ? e.value : 'ipv4';
+	};
+
 	window.tspuApply = function (i) {
 		var list = window.tspuApplyList || [];
 		var v = null;
@@ -1174,7 +1223,7 @@
 		if (!v) return;
 		if (!window.confirm('Применить вариант ' + v.n + ' («' + v.label + '») в Zapret2?\nСекция tspu_test будет записана в /etc/config/zapret2 (существующая заменяется), создаётся резервная копия, Zapret2 перезапустится.')) return;
 		elGenStatus.textContent = 'Применяю вариант ' + v.n + ' в Zapret2...';
-		xhr(U_APPLY + '?script=' + encodeURIComponent(v.script) + '&label=' + encodeURIComponent(v.label) + '&hostlist=' + encodeURIComponent(window.tspuApplyHostlist ? window.tspuApplyHostlist() : '') + '&domain=' + encodeURIComponent(elDomain.value), function (t) {
+		xhr(U_APPLY + '?script=' + encodeURIComponent(v.script) + '&label=' + encodeURIComponent(v.label) + '&hostlist=' + encodeURIComponent(window.tspuApplyHostlist ? window.tspuApplyHostlist() : '') + '&l3=' + encodeURIComponent(window.tspuApplyL3 ? window.tspuApplyL3() : 'ipv4') + '&domain=' + encodeURIComponent(elDomain.value), function (t) {
 			if (t.indexOf('state=ok') < 0) { elGenStatus.textContent = 'Ошибка применения: ' + t; return; }
 			var mh = t.match(/hostlist=([A-Za-z0-9_.-]+)/), hl = mh ? mh[1] : '';
 			var mr = t.match(/resolved=(\S+)/), res = mr ? mr[1] : '';

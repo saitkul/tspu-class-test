@@ -100,9 +100,12 @@ function action_start()
 	end
 	local rep = arg_clean(http.formvalue("repeats"), "^%d+$", "3")
 	local tmo = arg_clean(http.formvalue("wait"), "^%d+%.?%d*$", "2.5")
+	-- IPv6-проба: 4-й аргумент CLI "ipv6" - прогон дополнительно по IPv6
+	local ip6 = tostring(http.formvalue("ipv6") or "")
+	local cmd = string.format("/usr/bin/tspu-test start '%s' '%s' '%s'", dom, rep, tmo)
+	if ip6 == "1" then cmd = cmd .. " 'ipv6'" end
 	http.prepare_content("text/plain; charset=utf-8")
-	http.write(luci.sys.exec(string.format(
-		"/usr/bin/tspu-test start '%s' '%s' '%s' 2>&1", dom, rep, tmo)))
+	http.write(luci.sys.exec(cmd .. " 2>&1"))
 end
 
 function action_stop()
@@ -148,21 +151,17 @@ function action_applyzapret()
 	end
 	local hf = io.open("/tmp/tspu_apply.hostlist", "w")
 	if hf then hf:write(hl) hf:close() end
+	-- Фильтр L3 секции: ipv4 | ipv6 | both (по умолчанию ipv4)
+	local l3 = tostring(http.formvalue("l3") or "ipv4")
+	if l3 ~= "ipv4" and l3 ~= "ipv6" and l3 ~= "both" then l3 = "ipv4" end
+	local lf = io.open("/tmp/tspu_apply.l3", "w")
+	if lf then lf:write(l3) lf:close() end
 	local f = io.open("/tmp/tspu_apply.script", "w")
 	if not f then
 		http.prepare_content("text/plain; charset=utf-8")
 		http.write("state=error msg=cannot write temp file")
 		return
 	end
-	-- Выбор списка хостов из UI (имя zapret_hosts_*.txt, без путей)
-	local hl = tostring(http.formvalue("hostlist") or "")
-	if hl ~= "" and not hl:match("^[A-Za-z0-9_.%-]+$") then
-		http.prepare_content("text/plain; charset=utf-8")
-		http.write("state=error msg=invalid hostlist name")
-		return
-	end
-	local hf = io.open("/tmp/tspu_apply.hostlist", "w")
-	if hf then hf:write(hl) hf:close() end
 	f:write(script)
 	f:close()
 	http.prepare_content("text/plain; charset=utf-8")

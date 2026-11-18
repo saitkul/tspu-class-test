@@ -629,7 +629,7 @@ _prod() {
 	echo $$ > "$PROD_PIDF"
 	trap 'rm -f "$PROD_PIDF"' EXIT INT TERM
 	: > "$PROD_LOG"
-	if pgrep nfqws2 >/dev/null 2>&1; then MODE="с активной стратегией Zapret2"; else MODE="БЕЗ стратегии (Zapret2 не запущен)"; fi
+	if pgrep nfqws2 >/dev/null 2>&1; then MODE="Zapret2 работает - проба меряет вашу текущую стратегию"; else MODE="Zapret2 не запущен - проба меряет ТСПУ без обхода"; fi
 	T0=$(date +%s); TE=$((T0 + DUR)); N_OK=0; N_FAIL=0; TFAIL=""
 	echo "Прод-проба: ${DUR}с, домен $DOM, $MODE" | tee -a "$PROD_LOG"
 	while [ "$(date +%s)" -lt "$TE" ]; do
@@ -638,11 +638,11 @@ _prod() {
 		TS=$(date +%s)
 		if [ -n "$CODE" ] && [ "$CODE" != "000" ]; then
 			N_OK=$((N_OK+1))
-			echo "$TS OK code=$CODE t=${TT:-?}" >> "$PROD_LOG"
+			echo "$TS [$(date '+%H:%M:%S')] OK код=$CODE время=${TT:-?}с" >> "$PROD_LOG"
 		else
 			N_FAIL=$((N_FAIL+1))
 			[ -z "$TFAIL" ] && TFAIL=$((TS - T0))
-			echo "$TS FAIL" >> "$PROD_LOG"
+			echo "$TS [$(date '+%H:%M:%S')] СБОЙ" >> "$PROD_LOG"
 		fi
 		echo "state=running elapsed=$((TS - T0))/$DUR ok=$N_OK fail=$N_FAIL" > "$PROD_STATUS"
 		sleep 1
@@ -652,18 +652,18 @@ _prod() {
 	WT0=$T0
 	while [ $WT0 -lt $TE ]; do
 		WE=$((WT0 + 10)); [ $WE -gt $TE ] && WE=$TE
-		WOK=$(awk -v a=$((WT0 + 1)) -v b=$WE '$1>=a && $1<=b && $2=="OK"' "$PROD_LOG" | wc -l)
-		WFL=$(awk -v a=$((WT0 + 1)) -v b=$WE '$1>=a && $1<=b && $2=="FAIL"' "$PROD_LOG" | wc -l)
+		WOK=$(awk -v a=$((WT0 + 1)) -v b=$WE '$1>=a && $1<=b && $3=="OK"' "$PROD_LOG" | wc -l)
+		WFL=$(awk -v a=$((WT0 + 1)) -v b=$WE '$1>=a && $1<=b && $3=="СБОЙ"' "$PROD_LOG" | wc -l)
 		echo "  окно $((WT0 - T0 + 1))-$((WE - T0))с: OK=$WOK FAIL=$WFL" | tee -a "$PROD_LOG"
 		WT0=$WE
 	done
 	if [ "$N_FAIL" -eq 0 ]; then
-		echo "ВЕРДИКТ: деградация не поймана - все соединения прошли. Не гарантия для видеопотока; итог проверяйте видео." | tee -a "$PROD_LOG"
+		echo "ВЕРДИКТ: все соединения прошли - признаков деградации не замечено. Это проверка соединений, а не самого видео: откройте видео и посмотрите, как играет." | tee -a "$PROD_LOG"
 	elif [ -n "$TFAIL" ] && [ "$TFAIL" -ge 10 ]; then
-		echo "ВЕРДИКТ: АДАПТИВНАЯ ДЕГРАДАЦИЯ - первые соединения проходили, отказы начались с ${TFAIL}-й секунды." | tee -a "$PROD_LOG"
+		echo "ВЕРДИКТ: ТСПУ адаптивный - первые соединения проходили, а с ${TFAIL}-й секунды он начал резать новые." | tee -a "$PROD_LOG"
 		echo "ТСПУ разогревается и режет повторные соединения. Меры: дробилка (5), лестница (4), туннель на видеодомены." | tee -a "$PROD_LOG"
 	else
-		echo "ВЕРДИКТ: соединения начали умирать сразу (с ${TFAIL:-1}-й секунды) - узел жёсткий или стратегия не подходит." | tee -a "$PROD_LOG"
+		echo "ВЕРДИКТ: соединения начали отказывать сразу (с ${TFAIL:-1}-й секунды) - узел жёсткий или стратегия не подходит." | tee -a "$PROD_LOG"
 	fi
 	echo "state=done ok=$N_OK fail=$N_FAIL first_fail=${TFAIL:-0}" > "$PROD_STATUS"
 	rm -f "$PROD_PIDF"
@@ -699,11 +699,14 @@ VAL_RUNLOG=/tmp/tspu_val_run.log
 val_alive() { [ -f "$VAL_PIDF" ] && kill -0 "$(cat "$VAL_PIDF" 2>/dev/null)" 2>/dev/null; }
 
 val_stop() {
-	if val_alive; then kill "$(cat "$VAL_PIDF")" 2>/dev/null; rm -f "$VAL_PIDF"; /etc/init.d/zapret2 start >/dev/null 2>&1; echo "state=stopped"; else echo "state=idle"; fi
+	if val_alive; then kill "$(cat "$VAL_PIDF")" 2>/dev/null; rm -f "$VAL_PIDF"; /etc/init.d/zapret2 start >/dev/null 2>&1; echo "Валидация остановлена."; else echo "Валидация и так не запущена."; fi
 }
 
+VAL_REPORT=/tmp/tspu_val.report
+
 _val_report() {
-	echo "=== РЕЗУЛЬТАТ ВАЛИДАЦИИ (домен: $1, повторов: $2) ===" | tee -a "$VAL_LOG"
+	: > "$VAL_REPORT"
+	echo "=== РЕЗУЛЬТАТ ВАЛИДАЦИИ (домен: $1, повторов: $2) ===" | tee -a "$VAL_LOG" >> "$VAL_REPORT"
 	NOK=0; NALL=0; i=0
 	while IFS= read -r A; do
 		[ -z "$A" ] && continue
@@ -712,18 +715,20 @@ _val_report() {
 		if [ "$AV" -ge 2 ]; then V="ПРОШЛА (обе версии TLS)"; NOK=$((NOK+1))
 		elif [ "$AV" -eq 1 ]; then V="ПРОШЛА только на одной версии TLS"; NOK=$((NOK+1))
 		else V="НЕ прошла"; fi
-		echo "Строка $i: $V" | tee -a "$VAL_LOG"
-		echo "   $A" | tee -a "$VAL_LOG"
+		echo "Строка $i: $V" | tee -a "$VAL_LOG" >> "$VAL_REPORT"
+		echo "   $A" | tee -a "$VAL_LOG" >> "$VAL_REPORT"
 	done < /tmp/tspu_validate_norm.txt
 	if [ "$NOK" -eq 0 ]; then
-		echo "ИТОГ: ни одна строка не работает на вашем ТСПУ." | tee -a "$VAL_LOG"
+		echo "ИТОГ: ни одна строка не работает на вашем ТСПУ." | tee -a "$VAL_LOG" >> "$VAL_REPORT"
 	else
-		echo "ИТОГ: на вашем ТСПУ работают $NOK из $NALL строк." | tee -a "$VAL_LOG"
+		echo "ИТОГ: на вашем ТСПУ работают $NOK из $NALL строк." | tee -a "$VAL_LOG" >> "$VAL_REPORT"
 	fi
 }
 
 _validate() {
-	REP=$1; DOM=$2
+	# ВАЖНО: порядок аргументов - ДОМЕН, ПОВТОРОВ (раньше был перепутан: доменом
+	# становилось число повторов и blockcheck тестировал несуществующий узел "2")
+	DOM=$1; REP=$2
 	echo $$ > "$VAL_PIDF"
 	WAS=0
 	pgrep nfqws2 >/dev/null 2>&1 && { WAS=1; /etc/init.d/zapret2 stop >/dev/null 2>&1; }
@@ -748,7 +753,7 @@ do_validate_start() {
 	case "$REP" in *[!0-9]*) REP=2 ;; esac
 	[ "$REP" -lt 1 ] && REP=1
 	[ "$REP" -gt 5 ] && REP=5
-	if val_alive; then echo "state=running"; exit 0; fi
+	if val_alive; then echo "Валидация уже идёт."; exit 0; fi
 	[ -s /tmp/tspu_validate.txt ] || { echo "state=error msg=вставьте стратегию в поле"; exit 1; }
 	[ -f /opt/zapret2/blockcheck2.sh ] || { echo "state=error msg=Zapret2 not found"; exit 1; }
 	# Только строки-аргументы nfqws2 (без кавычек, $, ;, |, &, <, >, скобок)
@@ -756,12 +761,13 @@ do_validate_start() {
 		echo "state=error msg=стратегия содержит запрещённые символы - только строки --аргументов nfqws2"
 		exit 1
 	fi
-	grep -vE '^[[:space:]]*(#|$)' /tmp/tspu_validate.txt > /tmp/tspu_validate_norm.txt
+	# CRLF из браузерного textarea ломает сравнение строк - убираем
+	tr -d '\r' < /tmp/tspu_validate.txt | grep -vE '^[[:space:]]*(#|$)' > /tmp/tspu_validate_norm.txt
 	grep -q . /tmp/tspu_validate_norm.txt || { echo "state=error msg=no strategy rows"; exit 1; }
 	echo "state=starting" > "$VAL_STATUS"
 	/bin/sh -c "/usr/bin/tspu-test _validate \"$DOM\" \"$REP\" > $VAL_RUNLOG 2>&1 &"
 	sleep 1
-	if val_alive; then echo "state=started"; else echo "state=error msg=failed to start"; head -n 3 "$VAL_RUNLOG" 2>/dev/null; exit 1; fi
+	if val_alive; then echo "Валидация запущена - результат появится через минуту-две."; else echo "state=error msg=failed to start"; head -n 3 "$VAL_RUNLOG" 2>/dev/null; exit 1; fi
 }
 
 # ============================================================
@@ -779,20 +785,22 @@ _canary() {
 	DOM=$1; IV=$2
 	echo $$ > "$CAN_PIDF"
 	trap 'rm -f "$CAN_PIDF"' EXIT INT TERM
-	echo "$(date '+%Y-%m-%d %H:%M:%S') START домен=$DOM интервал=${IV}с" >> "$CAN_LOG"
+	echo "$(date '+%Y-%m-%d %H:%M:%S') — канарейка запущена: домен $DOM, проверка каждые ${IV} с" >> "$CAN_LOG"
 	while true; do
 		if pgrep nfqws2 >/dev/null 2>&1; then
 			R=$(curl -s -o /dev/null --max-time 6 -w "%{http_code}|%{time_total}" "https://$DOM/generate_204" 2>/dev/null)
 			CODE=${R%%|*}; TT=${R##*|}
 			if [ -n "$CODE" ] && [ "$CODE" != "000" ]; then
-				echo "$(date '+%Y-%m-%d %H:%M:%S') OK t=${TT:-?}" >> "$CAN_LOG"
+				echo "$(date '+%Y-%m-%d %H:%M:%S') — ОК ($(printf '%.2f' "${TT:-0}" 2>/dev/null || echo "${TT:-0}") с)" >> "$CAN_LOG"
+				echo "last_result=ОК" >> "$CAN_STATUS"
 			else
-				echo "$(date '+%Y-%m-%d %H:%M:%S') FAIL" >> "$CAN_LOG"
+				echo "$(date '+%Y-%m-%d %H:%M:%S') — СБОЙ (сайт не открылся)" >> "$CAN_LOG"
+				echo "last_result=СБОЙ" >> "$CAN_STATUS"
 			fi
 		else
-			echo "$(date '+%Y-%m-%d %H:%M:%S') SKIP zapret2-not-running" >> "$CAN_LOG"
+			echo "$(date '+%Y-%m-%d %H:%M:%S') — пропуск: Zapret2 не запущен" >> "$CAN_LOG"
 		fi
-		echo "last=$(date '+%Y-%m-%d %H:%M:%S') dom=$DOM" > "$CAN_STATUS"
+		echo "last=$(date '+%Y-%m-%d %H:%M:%S') dom=$DOM" >> "$CAN_STATUS"
 		sleep "$IV"
 	done
 }
@@ -805,31 +813,34 @@ do_canary_start() {
 	case "$IV" in *[!0-9]*) IV=300 ;; esac
 	[ "$IV" -lt 60 ] && IV=60
 	[ "$IV" -gt 3600 ] && IV=3600
-	if can_alive; then echo "state=running"; exit 0; fi
+	if can_alive; then echo "Канарейка уже работает."; exit 0; fi
 	command -v curl >/dev/null 2>&1 || { echo "state=error msg=curl not found"; exit 1; }
 	echo "state=starting" > "$CAN_STATUS"
 	/bin/sh -c "/usr/bin/tspu-test _canary \"$DOM\" \"$IV\" > /tmp/tspu_can_run.log 2>&1 &"
 	sleep 1
-	if can_alive; then echo "state=started"; else echo "state=error msg=failed to start"; head -n 3 /tmp/tspu_can_run.log 2>/dev/null; exit 1; fi
+	if can_alive; then echo "Канарейка запущена - следит за доменом."; else echo "state=error msg=failed to start"; head -n 3 /tmp/tspu_can_run.log 2>/dev/null; exit 1; fi
 }
 
 canary_stop() {
-	if can_alive; then kill "$(cat "$CAN_PIDF")" 2>/dev/null; rm -f "$CAN_PIDF"; echo "$(date '+%Y-%m-%d %H:%M:%S') STOPPED" >> "$CAN_LOG"; echo "state=stopped"; else echo "state=idle"; fi
+	if can_alive; then kill "$(cat "$CAN_PIDF")" 2>/dev/null; rm -f "$CAN_PIDF"; echo "$(date '+%Y-%m-%d %H:%M:%S') — канарейка остановлена" >> "$CAN_LOG"; echo "Канарейка остановлена."; else echo "Канарейка и так не запущена."; fi
 }
 
 canary_status() {
 	if can_alive; then
-		cat "$CAN_STATUS" 2>/dev/null
-		echo "alive=1"
+		echo "Канарейка работает."
 	else
-		echo "alive=0"
+		echo "Канарейка остановлена."
 	fi
 	if [ -s "$CAN_LOG" ]; then
-		OKS=$(grep -c " OK " "$CAN_LOG" 2>/dev/null)
-		FAILS=$(grep -c " FAIL " "$CAN_LOG" 2>/dev/null)
-		echo "ok=$OKS fail=$FAILS"
-		echo "--- последние 20 записей ---"
-		tail -n 20 "$CAN_LOG" 2>/dev/null
+		OKS=$(grep -c "— ОК (" "$CAN_LOG" 2>/dev/null)
+		FAILS=$(grep -c "— СБОЙ" "$CAN_LOG" 2>/dev/null)
+		echo "Проверок: успешных ${OKS:-0}, сбоев ${FAILS:-0}."
+		LAST=$(grep -E "— (ОК|СБОЙ|пропуск)" "$CAN_LOG" 2>/dev/null | tail -n 1)
+		[ -n "$LAST" ] && echo "Последняя запись: $LAST"
+		echo "--- последние 15 записей ---"
+		tail -n 15 "$CAN_LOG" 2>/dev/null
+	else
+		echo "Проверок ещё не было."
 	fi
 }
 
@@ -1056,6 +1067,7 @@ case "${1:-}" in
 			start) shift; do_validate_start "$@" ;;
 			stop) val_stop ;;
 			status) if val_alive; then cat "$VAL_STATUS" 2>/dev/null; echo "alive=1"; else echo "alive=0"; fi ;;
+			report) cat "$VAL_REPORT" 2>/dev/null || echo "отчёта ещё нет - запустите валидацию" ;;
 			log) cat "$VAL_LOG" 2>/dev/null ;;
 			*) echo "usage: tspu-test validate start ДОМЕН [ПОВТОРОВ] | stop | status | log"; exit 1 ;;
 		esac
@@ -1070,7 +1082,7 @@ case "${1:-}" in
 			start) shift; do_canary_start "$@" ;;
 			stop) canary_stop ;;
 			status) canary_status ;;
-			clear) : > "$CAN_LOG" 2>/dev/null; echo "$(date '+%Y-%m-%d %H:%M:%S') LOG-CLEARED" >> "$CAN_LOG"; echo "cleared" ;;
+			clear) : > "$CAN_LOG" 2>/dev/null; echo "$(date '+%Y-%m-%d %H:%M:%S') — лог очищен" >> "$CAN_LOG"; echo "Лог канарейки очищен." ;;
 			log) cat "$CAN_LOG" 2>/dev/null ;;
 			*) echo "usage: tspu-test canary start ДОМЕН [ИНТЕРВАЛ_С] | stop | status | log"; exit 1 ;;
 		esac
@@ -1087,16 +1099,18 @@ case "${1:-}" in
 		if [ -n "$R" ] && echo "$R" | grep -q '"type": *65'; then
 			EB=$(echo "$R" | grep -o "ech=[A-Za-z0-9+/=_-]*" | head -n 1)
 			if [ -n "$EB" ]; then
-				echo "ECH: домен $D публикует ech-параметр (${EB:0:44}...) - сервер поддерживает ECH."
+				echo "Результат: сайт поддерживает шифрование имени (ECH)."
+				echo "Это значит: имя сайта, которое вы открываете, скрыто от промежуточных фильтров."
+				echo "Действий не требуется - современные браузеры используют это автоматически."
 			else
-				echo "ECH: у домена $D есть HTTPS-запись (type 65), но ech-параметра в ней не видно."
+				echo "Результат: сайт использует современный формат DNS-записей, но шифрование имени (ECH) не включает."
 			fi
 		else
-			echo "ECH: домен $D не публикует HTTPS (type 65) записи через DoH - ECH сервером не рекламируется."
+			echo "Результат: сайт не анонсирует шифрование имени (ECH)."
 		fi
-		echo "Граница пробы: роутерный curl не умеет ECH - реальный обход ECH проверяется браузером"
-		echo "(Chrome/Firefox включают ECH, когда сервер его рекламирует). Проба отвечает только на"
-		echo "вопрос «рекламирует ли домен ECH в DNS»."
+		echo "Что это вообще такое: ECH - способ спрятать имя сайта внутри зашифрованного соединения,"
+		echo "чтобы фильтр не видел, какой именно сайт вы открываете. Проверка отвечает только на вопрос"
+		echo "«обещает ли сайт такую защиту» - сам роутер её включить или выключить не может."
 		;;
 	profiles)
 		if [ -s /tmp/tspu_profiles.log ]; then

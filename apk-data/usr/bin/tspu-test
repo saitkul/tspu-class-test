@@ -732,7 +732,7 @@ _validate() {
 	L=/tmp/tspu_val.log
 	: > "$L"
 	echo "state=running" > "$VAL_STATUS"
-	cd /opt/zapret2 || exit 1
+	cd /opt/zapret2 || { echo "state=error msg=Zapret2 not found" > "$VAL_STATUS"; exit 1; }
 	BATCH=1 SCANLEVEL=force TEST=custom LIST_HTTPS_TLS12=$S LIST_HTTPS_TLS13=$S DOMAINS="$DOM" IPVS=4 ENABLE_HTTP=0 ENABLE_HTTPS_TLS12=1 ENABLE_HTTPS_TLS13=1 ENABLE_HTTP3=0 REPEATS=$REP CURL_HTTPS_GET=1 CURL_MAX_TIME=2.5 ./blockcheck2.sh > "$L" 2>&1
 	/etc/init.d/zapret2 start >/dev/null 2>&1
 	_val_report "$DOM" "$REP"
@@ -1070,6 +1070,7 @@ case "${1:-}" in
 			start) shift; do_canary_start "$@" ;;
 			stop) canary_stop ;;
 			status) canary_status ;;
+			clear) : > "$CAN_LOG" 2>/dev/null; echo "$(date '+%Y-%m-%d %H:%M:%S') LOG-CLEARED" >> "$CAN_LOG"; echo "cleared" ;;
 			log) cat "$CAN_LOG" 2>/dev/null ;;
 			*) echo "usage: tspu-test canary start ДОМЕН [ИНТЕРВАЛ_С] | stop | status | log"; exit 1 ;;
 		esac

@@ -367,10 +367,13 @@ AWK
 		fi
 	fi
 	TOTAL=$(( NLINES * 2 * NUMDOM * NFAMS ))
-	# Оценка времени: попыток NLINES*2*NFAMS*REP на домен, каждая ~TMO+2 с, плюс запуск и проверка адаптивности
-	ESTS=$(awk -v n="$NLINES" -v r="$REP" -v d="$NUMDOM" -v f="$NFAMS" -v t="$TMO" 'BEGIN { printf "%d", n*2*f*r*d*(t+2)+40 }')
-	ESTMIN=$(( ESTS / 60 + 1 ))
-	echo "Оценка времени: тест займёт примерно ${ESTMIN} мин (стратегий: $NLINES, повторов: $REP, ожидание: ${TMO} с, доменов: $NUMDOM; плюс проверка адаптивности)."
+	# Оценка времени - откалибрована по реальным прогонам (REP=1: 100с, REP=3: 275с):
+	# ~12 с подготовки + ~1.4 с на попытку при ожидании 2.5 с (успешные проходят быстро,
+	# полный таймаут горят только неудачные). Диапазон - честный коридор.
+	ESTS=$(awk -v n="$NLINES" -v r="$REP" -v d="$NUMDOM" -v f="$NFAMS" -v t="$TMO" 'BEGIN { printf "%d", 12 + (n*2*f*r*d + 6) * (0.35*t+0.55) }')
+	ESTLO=$(( ESTS / 60 ))
+	ESTHI=$(( ESTLO + 1 ))
+	echo "Оценка времени: примерно ${ESTLO}-${ESTHI} мин (стратегий: $NLINES, повторов: $REP, ожидание: ${TMO} с, доменов: $NUMDOM; реальное время зависит от того, сколько стратегий проходит)."
 	T0=$(date +%s)
 	DOMNUM=0
 
@@ -760,9 +763,11 @@ do_validate_start() {
 	if val_alive; then echo "Валидация уже идёт."; exit 0; fi
 	[ -s /tmp/tspu_validate.txt ] || { echo "state=error msg=вставьте стратегию в поле"; exit 1; }
 	[ -f /opt/zapret2/blockcheck2.sh ] || { echo "state=error msg=Zapret2 not found"; exit 1; }
-	# Только строки-аргументы nfqws2 (без кавычек, $, ;, |, &, <, >, скобок)
-	if grep -qvE '^[[:space:]]*$|^--[A-Za-z0-9_%=:,/+.@-]+([[:space:]]+[A-Za-z0-9_%=:,/+.@-]+)*[[:space:]]*$' /tmp/tspu_validate.txt; then
-		echo "state=error msg=стратегия содержит запрещённые символы - только строки --аргументов nfqws2"
+	# Запрещены только shell-критичные символы (обратная кавычка, $, ;, &, |, <, >) -
+	# они не встречаются в аргументах nfqws2. Всё остальное (#, скобки, кавычки, *)
+	# легитимно: luaexec:code=..., seqovl=#patmod, host=www.google.com и т.п.
+	if grep -qE '[`$;&|<>]' /tmp/tspu_validate.txt; then
+		echo "state=error msg=стратегия содержит недопустимые символы: обратная кавычка, доллар, точка с запятой, амперсанд, пайп, перенаправление"
 		exit 1
 	fi
 	# Стратегия вставляется ЦЕЛИКОМ (многострочно, как в поле script Zapret2):

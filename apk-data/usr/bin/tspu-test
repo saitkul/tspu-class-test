@@ -142,9 +142,33 @@ do_run() {
 	[ -f /opt/zapret2/blockcheck2.sh ] || { echo "Не найден /opt/zapret2/blockcheck2.sh: Zapret2 не установлен?"; exit 1; }
 	command -v curl >/dev/null 2>&1 || { echo "Не найден curl: blockcheck2 без него не работает."; exit 1; }
 	command -v awk >/dev/null 2>&1 || { echo "Не найден awk."; exit 1; }
-	# DNS-проверка каждого домена
+	# DNS-проверка каждого домена: узлы googlevideo ВРЕМЕННЫЕ и региональные,
+	# обычные домены проверяем фолбэком через публичный DNS
+	DNSFAIL_LIST=""
 	for D in $DOM; do
-		nslookup "$D" >/dev/null 2>&1 || echo "ВНИМАНИЕ: $D не резолвится. Проверьте DNS и отключите VPN, иначе результат теста будет неверным."
+		nslookup "$D" >/dev/null 2>&1 && continue
+		DNSFAIL_LIST="$DNSFAIL_LIST $D"
+		case "$D" in
+			*googlevideo*)
+				echo "ВНИМАНИЕ: узел $D не резолвится. Записи узлов googlevideo ВРЕМЕННЫЕ и региональные:"
+				echo "  - имя могло устареть: Google ротирует узлы, возьмите свежий из DevTools (F12 -> Network -> videoplayback) и тестируйте сразу;"
+				echo "  - либо ваш DNS не обслуживает узлы Google Global Cache."
+				echo "  Надёжный обход - закрепить узел в /etc/hosts:"
+				echo "    1) IP узла = Remote Address соединения videoplayback в DevTools (колонка Remote Address);"
+				echo "    2) echo \"<IP> $D\" >> /etc/hosts"
+				echo "    3) повторите тест в приложении;"
+				echo "    4) после теста удалите запись: sed -i '\\|$D|d' /etc/hosts"
+				;;
+			*)
+				PIP=$(nslookup "$D" 8.8.8.8 2>/dev/null | sed -n 's/^Address [0-9][0-9]*: \([0-9a-fA-F.:]\+\).*/\1/p' | head -n 1)
+				if [ -n "$PIP" ]; then
+					echo "ВНИМАНИЕ: $D не резолвится вашим DNS, но публичный 8.8.8.8 даёт IP: $PIP."
+					echo "  Обход: echo \"$PIP $D\" >> /etc/hosts и повторите тест - проблема в локальной резолвилке (fake-ip/rebind-защита/фильтр)."
+				else
+					echo "ВНИМАНИЕ: $D не резолвится (ни локально, ни 8.8.8.8). Проверьте имя и отключите VPN, иначе тест будет неверным."
+				fi
+				;;
+		esac
 	done
 
 	cat > $A <<'AWK'
@@ -351,6 +375,7 @@ AWK
 
 	for CURDOM in $DOM; do
 		DOMNUM=$((DOMNUM+1))
+		case " $DNSFAIL_LIST " in *" $CURDOM "*) DNSFAIL=1 ;; *) DNSFAIL=0 ;; esac
 		rm -f /tmp/class_report.d$DOMNUM /tmp/class_report.d$DOMNUM.ipv*
 
 		echo
@@ -409,7 +434,14 @@ AWK
 				echo "Результат: тест не завершился (в логе нет блока SUMMARY)." > "$RLF"
 			else
 				awk -v rep="$REP" -v rpt="$RLF" -f $A $S "$DLF"
+				AWKRC=$?
 				[ -s "$RLF" ] || echo "Результат: в логе нет строк из списка." > "$RLF"
+				if [ "$DNSFAIL" = 1 ]; then
+					if [ $AWKRC -ne 0 ]; then
+						echo "Тест не выполнялся: домен не резолвится - blockcheck2 требует рабочую резолвилку. Используйте обход /etc/hosts из ВНИМАНИЕ выше и повторите."
+					fi
+					echo "Примечание: домен не резолвился - тест мог не выполняться; обход - /etc/hosts (см. ВНИМАНИЕ в логе теста)." >> "$RLF"
+				fi
 				if [ $NB12 = 1 ]; then
 					echo "TLS 1.2: открывается без обхода (стратегии всё равно проверены, SCANLEVEL=force)."
 					echo "TLS 1.2: открывается без обхода (стратегии всё равно проверены)." >> "$RLF"

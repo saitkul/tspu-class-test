@@ -1108,6 +1108,29 @@
 				tagStrategy(stripPayload(baseArgs), 1)].concat(steps7);
 			v7note = 'сниженная доза шума (repeats=2) — против выработки сигнатуры и для слабых роутеров';
 		}
+		/* --- Вариант 8: Ротор (анти-адаптив) --- */
+		var v8 = null, v8note = '';
+		if (!isTspu) {
+			v8 = null; v8note = '— доступен по отчёту TSPU test (нужны номера строк)';
+		} else {
+			var famPref = [1, 19, 20, 14, 15, 24];
+			var used8 = [];
+			for (var q8 = 0; q8 < famPref.length && used8.length < 6; q8++) {
+				if (stable.indexOf(famPref[q8]) >= 0 && wk[famPref[q8]] && used8.indexOf(famPref[q8]) < 0) used8.push(famPref[q8]);
+			}
+			if (used8.length >= 3) {
+				var steps8 = [];
+				for (var s8 = 0; s8 < used8.length; s8++) {
+					steps8.push(tagStrategy(stripPayload(wk[used8[s8]]), s8 + 1));
+				}
+				v8 = ['--out-range=-s34228',
+					'--payload=all',
+					'--in-range=-s5556',
+					'--lua-desync=circular:fails=1:time=30:retrans=2:nld=2:reset',
+					'--in-range=x'].concat(steps8);
+				v8note = 'ротор ваших механик с быстрым циклом (30 с): соединение редко живёт на одной механике долго — адаптиву нечего запоминать';
+			}
+		}
 
 		/* ---------- вывод ---------- */
 		var o = [];
@@ -1168,6 +1191,12 @@
 			o = o.concat(v7);
 			o.push('   (' + v7note + ')');
 		}
+		if (v8) {
+			o.push('');
+			o.push('8. Ротор (анти-адаптив) — против накопления сигнатуры адаптивным ТСПУ:');
+			o = o.concat(v8);
+			o.push('   (' + v8note + ')');
+		}
 		/* Применение в Zapret2: сохранить варианты для кнопок */
 		window.tspuApplyList = [];
 		function pushVar(n, arr, label) { if (arr && arr.length) window.tspuApplyList.push({ n: n, label: label, script: arr.join('\n') }); }
@@ -1178,6 +1207,7 @@
 		pushVar(5, v5, 'Дробилка');
 		pushVar(6, communityTemplate(), 'Универсальная лестница');
 		pushVar(7, v7, 'Дробилка-Лайт');
+		pushVar(8, v8, 'Ротор (анти-адаптив)');
 		var rowHtml = '';
 		for (var ai = 0; ai < window.tspuApplyList.length; ai++) {
 			var av = window.tspuApplyList[ai];

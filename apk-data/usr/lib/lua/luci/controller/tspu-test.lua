@@ -29,6 +29,174 @@ function index()
 		call("action_download")).leaf = true
 	entry({"admin", "services", "tspu-test", "applyzapret"},
 		call("action_applyzapret")).leaf = true
+
+	-- Прод-проба
+	entry({"admin", "services", "tspu-test", "prodstart"},
+		call("action_prodstart")).leaf = true
+	entry({"admin", "services", "tspu-test", "prodstop"},
+		call("action_prodstop")).leaf = true
+	entry({"admin", "services", "tspu-test", "prodstatus"},
+		call("action_prodstatus")).leaf = true
+	entry({"admin", "services", "tspu-test", "prodlog"},
+		call("action_prodlog")).leaf = true
+	-- Валидатор
+	entry({"admin", "services", "tspu-test", "valstart"},
+		call("action_valstart")).leaf = true
+	entry({"admin", "services", "tspu-test", "valstop"},
+		call("action_valstop")).leaf = true
+	entry({"admin", "services", "tspu-test", "valstatus"},
+		call("action_valstatus")).leaf = true
+	entry({"admin", "services", "tspu-test", "vallog"},
+		call("action_vallog")).leaf = true
+	-- Канарейка
+	entry({"admin", "services", "tspu-test", "canarystart"},
+		call("action_canarystart")).leaf = true
+	entry({"admin", "services", "tspu-test", "canarystop"},
+		call("action_canarystop")).leaf = true
+	entry({"admin", "services", "tspu-test", "canarystatus"},
+		call("action_canarystatus")).leaf = true
+	entry({"admin", "services", "tspu-test", "canarylog"},
+		call("action_canarylog")).leaf = true
+	entry({"admin", "services", "tspu-test", "profiles"},
+		call("action_profiles")).leaf = true
+	-- ECH-проба
+	entry({"admin", "services", "tspu-test", "ech"},
+		call("action_ech")).leaf = true
+
+	-- Отдельные вкладки (пункты меню LuCI)
+	local pp = entry({"admin", "services", "tspu-prod"},
+		template("tspu-test/prod"), _("TSPU test - Прод-проба"), 66)
+	pp.dependent = false
+	local pv = entry({"admin", "services", "tspu-val"},
+		template("tspu-test/validator"), _("TSPU test - Валидатор"), 67)
+	pv.dependent = false
+	local pc = entry({"admin", "services", "tspu-canary"},
+		template("tspu-test/canary"), _("TSPU test - Канарейка"), 68)
+	pc.dependent = false
+end
+
+local function _dom_ok(dom)
+	return dom and dom:match("^[%w%.%-]+$") and not dom:match("^%-")
+end
+
+-- ===== Прод-проба =====
+function action_prodstart()
+	local http = luci.http
+	local dom = tostring(http.formvalue("domain") or "")
+	if not _dom_ok(dom) then
+		http.prepare_content("text/plain; charset=utf-8")
+		http.write("state=error msg=invalid domain")
+		return
+	end
+	local dur = tostring(http.formvalue("dur") or "30")
+	dur = dur:gsub("[^%d]", "")
+	if dur == "" then dur = "30" end
+	http.prepare_content("text/plain; charset=utf-8")
+	http.write(luci.sys.exec(string.format("/usr/bin/tspu-test prod start '%s' '%s' 2>&1", dom, dur)))
+end
+
+function action_prodstop()
+	luci.http.prepare_content("text/plain; charset=utf-8")
+	luci.http.write(luci.sys.exec("/usr/bin/tspu-test prod stop 2>&1"))
+end
+
+function action_prodstatus()
+	luci.http.prepare_content("text/plain; charset=utf-8")
+	luci.http.write(luci.sys.exec("/usr/bin/tspu-test prod status 2>&1"))
+end
+
+function action_prodlog()
+	luci.http.prepare_content("text/plain; charset=utf-8")
+	luci.http.write(luci.sys.exec("/usr/bin/tspu-test prod log 2>&1"))
+end
+
+-- ===== Валидатор =====
+function action_valstart()
+	local http = luci.http
+	local txt = tostring(http.formvalue("text") or "")
+	local f = io.open("/tmp/tspu_validate.txt", "w")
+	if not f then
+		http.prepare_content("text/plain; charset=utf-8")
+		http.write("state=error msg=cannot write temp file")
+		return
+	end
+	f:write(txt)
+	f:close()
+	local dom = tostring(http.formvalue("domain") or "")
+	if not _dom_ok(dom) then
+		http.prepare_content("text/plain; charset=utf-8")
+		http.write("state=error msg=invalid domain")
+		return
+	end
+	local rep = tostring(http.formvalue("rep") or "2")
+	rep = rep:gsub("[^%d]", "")
+	if rep == "" then rep = "2" end
+	http.prepare_content("text/plain; charset=utf-8")
+	http.write(luci.sys.exec(string.format("/usr/bin/tspu-test validate start '%s' '%s' 2>&1", dom, rep)))
+end
+
+function action_valstop()
+	luci.http.prepare_content("text/plain; charset=utf-8")
+	luci.http.write(luci.sys.exec("/usr/bin/tspu-test validate stop 2>&1"))
+end
+
+function action_valstatus()
+	luci.http.prepare_content("text/plain; charset=utf-8")
+	luci.http.write(luci.sys.exec("/usr/bin/tspu-test validate status 2>&1"))
+end
+
+function action_vallog()
+	luci.http.prepare_content("text/plain; charset=utf-8")
+	luci.http.write(luci.sys.exec("/usr/bin/tspu-test validate log 2>&1"))
+end
+
+-- ===== Канарейка =====
+function action_canarystart()
+	local http = luci.http
+	local dom = tostring(http.formvalue("domain") or "")
+	if not _dom_ok(dom) then
+		http.prepare_content("text/plain; charset=utf-8")
+		http.write("state=error msg=invalid domain")
+		return
+	end
+	local iv = tostring(http.formvalue("iv") or "300")
+	iv = iv:gsub("[^%d]", "")
+	if iv == "" then iv = "300" end
+	http.prepare_content("text/plain; charset=utf-8")
+	http.write(luci.sys.exec(string.format("/usr/bin/tspu-test canary start '%s' '%s' 2>&1", dom, iv)))
+end
+
+function action_canarystop()
+	luci.http.prepare_content("text/plain; charset=utf-8")
+	luci.http.write(luci.sys.exec("/usr/bin/tspu-test canary stop 2>&1"))
+end
+
+function action_canarystatus()
+	luci.http.prepare_content("text/plain; charset=utf-8")
+	luci.http.write(luci.sys.exec("/usr/bin/tspu-test canary status 2>&1"))
+end
+
+function action_canarylog()
+	luci.http.prepare_content("text/plain; charset=utf-8")
+	luci.http.write(luci.sys.exec("/usr/bin/tspu-test canary log 2>&1"))
+end
+
+function action_profiles()
+	luci.http.prepare_content("text/plain; charset=utf-8")
+	luci.http.write(luci.sys.exec("/usr/bin/tspu-test profiles 2>&1"))
+end
+
+-- ===== ECH-проба =====
+function action_ech()
+	local http = luci.http
+	local dom = tostring(http.formvalue("domain") or "")
+	if not _dom_ok(dom) then
+		http.prepare_content("text/plain; charset=utf-8")
+		http.write("state=error msg=invalid domain")
+		return
+	end
+	http.prepare_content("text/plain; charset=utf-8")
+	http.write(luci.sys.exec(string.format("/usr/bin/tspu-test ech '%s' 2>&1", dom)))
 end
 
 -- Белый список скачиваемых логов: никаких подстановок путей из запроса

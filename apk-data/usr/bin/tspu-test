@@ -478,13 +478,18 @@ AWK
 			IP0=${FAMS%% *}; IP0=${IP0#ipv}
 			MINI=/tmp/class_minilist.d$DOMNUM
 			MDLF=/tmp/class_test.log.d$DOMNUM.rt
+			# Нормализованный список БЕЗ комментариев: awk нумерует строки именно так
+			# (комментарии в начале файла списка сбивали sed - по номеру файла брался
+			# комментарий вместо стратегии, мини-список получался пустым для blockcheck2)
+			NORM=/tmp/class_normlist.d$DOMNUM
+			grep -vE '^[[:space:]]*(#|$)' "$S" > "$NORM"
 			: > "$MINI"
-			for CN in $CHAMP; do sed -n "${CN}p" "$S" >> "$MINI"; done
+			for CN in $CHAMP; do sed -n "${CN}p" "$NORM" >> "$MINI"; done
 			BATCH=1 SCANLEVEL=force TEST=custom LIST_HTTPS_TLS12=$MINI LIST_HTTPS_TLS13=$MINI DOMAINS="$CURDOM" IPVS=$IP0 ENABLE_HTTP=0 ENABLE_HTTPS_TLS12=1 ENABLE_HTTPS_TLS13=1 ENABLE_HTTP3=0 REPEATS=1 CURL_HTTPS_GET=1 CURL_MAX_TIME="$TMO" ./blockcheck2.sh > "$MDLF" 2>&1
 			cat "$MDLF" >> $L
 			RT_OK=""; RT_FAIL=""
 			for CN in $CHAMP; do
-				A=$(sed -n "${CN}p" "$S")
+				A=$(sed -n "${CN}p" "$NORM")
 				if grep -A1 -F -- "nfqws2 $A" "$MDLF" 2>/dev/null | grep -q "!!!!! AVAILABLE"; then
 					RT_OK="$RT_OK $CN"
 				else
@@ -520,7 +525,7 @@ AWK
 			fi
 		fi
 		# RLF-файлы fam-отчётов больше не нужны (чемпионы собраны)
-		rm -f /tmp/class_report.d$DOMNUM.ipv* 2>/dev/null
+		rm -f /tmp/class_report.d$DOMNUM.ipv* /tmp/class_minilist.d$DOMNUM /tmp/class_normlist.d$DOMNUM 2>/dev/null
 	done
 
 	# По завершении теста убрать служебные строки запуска из вывода.

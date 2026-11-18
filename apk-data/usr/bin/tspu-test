@@ -715,13 +715,13 @@ _val_report() {
 		if [ "$AV" -ge 2 ]; then V="ПРОШЛА (обе версии TLS)"; NOK=$((NOK+1))
 		elif [ "$AV" -eq 1 ]; then V="ПРОШЛА только на одной версии TLS"; NOK=$((NOK+1))
 		else V="НЕ прошла"; fi
-		echo "Строка $i: $V" | tee -a "$VAL_LOG" >> "$VAL_REPORT"
+		echo "Стратегия: $V" | tee -a "$VAL_LOG" >> "$VAL_REPORT"
 		echo "   $A" | tee -a "$VAL_LOG" >> "$VAL_REPORT"
 	done < /tmp/tspu_validate_norm.txt
 	if [ "$NOK" -eq 0 ]; then
-		echo "ИТОГ: ни одна строка не работает на вашем ТСПУ." | tee -a "$VAL_LOG" >> "$VAL_REPORT"
+		echo "ИТОГ: стратегия НЕ работает на вашем ТСПУ - ни одна попытка не прошла." | tee -a "$VAL_LOG" >> "$VAL_REPORT"
 	else
-		echo "ИТОГ: на вашем ТСПУ работают $NOK из $NALL строк." | tee -a "$VAL_LOG" >> "$VAL_REPORT"
+		echo "ИТОГ: стратегия работает на вашем ТСПУ." | tee -a "$VAL_LOG" >> "$VAL_REPORT"
 	fi
 }
 
@@ -761,8 +761,11 @@ do_validate_start() {
 		echo "state=error msg=стратегия содержит запрещённые символы - только строки --аргументов nfqws2"
 		exit 1
 	fi
-	# CRLF из браузерного textarea ломает сравнение строк - убираем
-	tr -d '\r' < /tmp/tspu_validate.txt | grep -vE '^[[:space:]]*(#|$)' > /tmp/tspu_validate_norm.txt
+	# Стратегия вставляется ЦЕЛИКОМ (многострочно, как в поле script Zapret2):
+	# все непустые строки склеиваются пробелами в ОДНУ стратегию. CRLF из
+	# браузерного textarea ломает сравнение строк - убираем.
+	tr -d '\r' < /tmp/tspu_validate.txt | grep -vE '^[[:space:]]*(#|$)' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | tr '\n' ' ' | tr -s ' ' > /tmp/tspu_validate_norm.txt
+	echo >> /tmp/tspu_validate_norm.txt
 	grep -q . /tmp/tspu_validate_norm.txt || { echo "state=error msg=no strategy rows"; exit 1; }
 	echo "state=starting" > "$VAL_STATUS"
 	/bin/sh -c "/usr/bin/tspu-test _validate \"$DOM\" \"$REP\" > $VAL_RUNLOG 2>&1 &"
@@ -1053,6 +1056,7 @@ case "${1:-}" in
 			start) shift; do_prod_start "$@" ;;
 			stop) prod_stop ;;
 			status) prod_status ;;
+			clear) : > "$PROD_LOG" 2>/dev/null; echo "state=idle" > "$PROD_STATUS" 2>/dev/null; echo "Лог прод-пробы очищен." ;;
 			log) cat "$PROD_LOG" 2>/dev/null ;;
 			*) echo "usage: tspu-test prod start ДОМЕН [СЕКУНД] | stop | status | log"; exit 1 ;;
 		esac
@@ -1067,7 +1071,14 @@ case "${1:-}" in
 			start) shift; do_validate_start "$@" ;;
 			stop) val_stop ;;
 			status) if val_alive; then cat "$VAL_STATUS" 2>/dev/null; echo "alive=1"; else echo "alive=0"; fi ;;
-			report) cat "$VAL_REPORT" 2>/dev/null || echo "отчёта ещё нет - запустите валидацию" ;;
+			clear) : > "$VAL_LOG" 2>/dev/null; : > "$VAL_REPORT" 2>/dev/null; echo "Отчёт валидации очищен." ;;
+			report) if [ -s "$VAL_REPORT" ]; then
+				cat "$VAL_REPORT"
+			elif val_alive; then
+				echo "Проверка идёт - результат появится по завершении."
+			else
+				echo "Отчёта ещё нет - запустите валидацию."
+			fi ;;
 			log) cat "$VAL_LOG" 2>/dev/null ;;
 			*) echo "usage: tspu-test validate start ДОМЕН [ПОВТОРОВ] | stop | status | log"; exit 1 ;;
 		esac

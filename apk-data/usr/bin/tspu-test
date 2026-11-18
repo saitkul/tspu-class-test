@@ -119,7 +119,7 @@ do_run() {
 	A=$AWKF
 	L=/tmp/class_test.log
 	RFULL=/tmp/class_report.txt
-	SCRIPT_VER="TSPU test @APP_VERSION@ (ядро tspu-class-test v2.6): 31 стратегия, IPv6-проба, SCANLEVEL=force"
+	SCRIPT_VER="TSPU test @APP_VERSION@ (ядро tspu-class-test v2.7): 31 стратегия, IPv6-проба, проверка адаптивности, SCANLEVEL=force"
 
 	echo $$ > "$PIDF"
 
@@ -453,8 +453,9 @@ AWK
 			fi
 			if [ -f "$RLF" ]; then
 				if [ "$NFAMS" = 2 ]; then echo "=== РЕЗУЛЬТАТЫ $FAMLBL ===" >> $RFULL; fi
+				# RLF не удалять здесь: из него после цикла собираются чемпионы
+				# для проверки адаптивности (удаляется в конце итерации домена)
 				cat "$RLF" >> $RFULL
-				rm -f "$RLF"
 			fi
 		done
 
@@ -492,8 +493,9 @@ AWK
 			done
 			rm -f "$MINI"
 			echo
-			echo "=== ПРОВЕРКА АДАПТИВНОСТИ (мгновенный re-test чемпионов: строки$CHAMP) ==="
-			echo "=== ПРОВЕРКА АДАПТИВНОСТИ (re-test чемпионов: строки$CHAMP) ===" >> $RFULL
+			echo "=== ПРОВЕРКА АДАПТИВНОСТИ ТСПУ ==="
+			echo "Мгновенный re-test строк-чемпионов ($CHAMP) сразу после основного скана:"
+			echo "=== ПРОВЕРКА АДАПТИВНОСТИ ТСПУ (re-test чемпионов: строки$CHAMP) ===" >> $RFULL
 			if [ -n "$RT_FAIL" ]; then
 				echo "Re-test: прошли:${RT_OK:- нет} | НЕ прошли (умерли при мгновенном повторе):$RT_FAIL"
 				echo "ВЕРДИКТ: ТСПУ АДАПТИВНЫЙ - чемпионы прошли в основном прогоне и умерли при повторе."
@@ -517,6 +519,8 @@ AWK
 				echo "Re-test не дал результата." >> $RFULL
 			fi
 		fi
+		# RLF-файлы fam-отчётов больше не нужны (чемпионы собраны)
+		rm -f /tmp/class_report.d$DOMNUM.ipv* 2>/dev/null
 	done
 
 	# По завершении теста убрать служебные строки запуска из вывода.

@@ -425,6 +425,66 @@ AWK
 				rm -f "$RLF"
 			fi
 		done
+
+		# Проверка адаптивности: мгновенный re-test чемпионов (строки РЕКОМЕНДАЦИЙ).
+		# Адаптивный ТСПУ режет повторные соединения после разогрева реальным трафиком:
+		# зелёный скан + мёртвый мгновенный повтор = вердикт «адаптивный».
+		CHAMP=""
+		for RF in /tmp/class_report.d$DOMNUM.*; do
+			[ -f "$RF" ] || continue
+			for CN in $(sed -n 's/^РЕКОМЕНДАЦИЯ (TLS 1\.[23]): строка \([0-9]\+\):.*/\1/p' "$RF" 2>/dev/null); do
+				case ",$CHAMP," in *",$CN,"*) ;; *) CHAMP="$CHAMP $CN" ;; esac
+			done
+		done
+		[ -z "$CHAMP" ] && CHAMP=$(sed -n 's/^\([0-9]\+\) \[.*/\1/p' /tmp/class_report.d$DOMNUM.ipv4 2>/dev/null | head -n 3 | tr '\n' ' ')
+		CHAMP=$(echo $CHAMP | tr ' ' '\n' | sort -un | head -n 3 | tr '\n' ' ')
+		CHAMP=$(echo $CHAMP)
+		if [ -n "$CHAMP" ]; then
+			CHN=$(echo $CHAMP | wc -w)
+			TOTAL=$(( TOTAL + CHN * 2 ))
+			IP0=${FAMS%% *}; IP0=${IP0#ipv}
+			MINI=/tmp/class_minilist.d$DOMNUM
+			MDLF=/tmp/class_test.log.d$DOMNUM.rt
+			: > "$MINI"
+			for CN in $CHAMP; do sed -n "${CN}p" "$S" >> "$MINI"; done
+			BATCH=1 SCANLEVEL=force TEST=custom LIST_HTTPS_TLS12=$MINI LIST_HTTPS_TLS13=$MINI DOMAINS="$CURDOM" IPVS=$IP0 ENABLE_HTTP=0 ENABLE_HTTPS_TLS12=1 ENABLE_HTTPS_TLS13=1 ENABLE_HTTP3=0 REPEATS=1 CURL_HTTPS_GET=1 CURL_MAX_TIME="$TMO" ./blockcheck2.sh > "$MDLF" 2>&1
+			cat "$MDLF" >> $L
+			RT_OK=""; RT_FAIL=""
+			for CN in $CHAMP; do
+				A=$(sed -n "${CN}p" "$S")
+				if grep -A1 -F -- "nfqws2 $A" "$MDLF" 2>/dev/null | grep -q "!!!!! AVAILABLE"; then
+					RT_OK="$RT_OK $CN"
+				else
+					RT_FAIL="$RT_FAIL $CN"
+				fi
+			done
+			rm -f "$MINI"
+			echo
+			echo "=== ПРОВЕРКА АДАПТИВНОСТИ (мгновенный re-test чемпионов: строки$CHAMP) ==="
+			echo "=== ПРОВЕРКА АДАПТИВНОСТИ (re-test чемпионов: строки$CHAMP) ===" >> $RFULL
+			if [ -n "$RT_FAIL" ]; then
+				echo "Re-test: прошли:${RT_OK:- нет} | НЕ прошли (умерли при мгновенном повторе):$RT_FAIL"
+				echo "ВЕРДИКТ: ТСПУ АДАПТИВНЫЙ - чемпионы прошли в основном прогоне и умерли при повторе."
+				echo "В проде ожидайте деградацию: длинные потоки (видео) режутся через 5-15 с даже при зелёном скане."
+				echo "Меры: лестница с ротацией (вариант 4), дробилка (вариант 5/7), короткоживущие соединения;"
+				echo "при жёсткой адаптивности на видеодоменах - туннель (WARP/awg) по ipset googlevideo."
+				{
+					echo "Re-test: прошли:${RT_OK:- нет} | не прошли:$RT_FAIL"
+					echo "ВЕРДИКТ: ТСПУ АДАПТИВНЫЙ - чемпионы умерли при мгновенном повторе; в проде ждите деградацию потоков."
+					echo "Меры: лестница с ротацией (вариант 4), дробилка (5/7), при жёсткой адаптивности - туннель на видеодомены."
+				} >> $RFULL
+			elif [ -n "$RT_OK" ]; then
+				echo "Re-test: прошли:$RT_OK | не прошли: нет"
+				echo "ВЕРДИКТ: адаптив не пойман (чемпионы прошли мгновенный повтор). Это не гарантия для длинных потоков - итог проверяйте видео."
+				{
+					echo "Re-test: прошли:$RT_OK | не прошли: нет"
+					echo "ВЕРДИКТ: адаптив не пойман (чемпионы прошли мгновенный повтор). Длинные потоки проверяйте видео."
+				} >> $RFULL
+			else
+				echo "Re-test не дал результата (чемпионы не найдены в логе) - пришлите краткий лог."
+				echo "Re-test не дал результата." >> $RFULL
+			fi
+		fi
 	done
 
 	# По завершении теста убрать служебные строки запуска из вывода.
@@ -467,6 +527,7 @@ AWK
 	    echo "двухпакетный (kyber) и другой отпечаток - результаты нарезки переносятся не 1:1. Финальная проверка - в браузере (Инкогнито / Ctrl+F5)."
 	    ;;
 	esac
+	echo "Per-device: стратегии валидированы curl-пробами (десктопный профиль). Телефоны (Cronet/QUIC) и ТВ (свой TLS-стек) могут вести себя иначе - проверяйте на устройстве; телефон грузит видео по минуте -> закройте QUIC (fw4: UDP 443 -> Reject, затем restart zapret2)."
 	cat $RFULL
 	echo "=== конец отчёта ==="
 	echo

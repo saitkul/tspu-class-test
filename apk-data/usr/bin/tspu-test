@@ -487,10 +487,15 @@ AWK
 			for CN in $CHAMP; do sed -n "${CN}p" "$NORM" >> "$MINI"; done
 			BATCH=1 SCANLEVEL=force TEST=custom LIST_HTTPS_TLS12=$MINI LIST_HTTPS_TLS13=$MINI DOMAINS="$CURDOM" IPVS=$IP0 ENABLE_HTTP=0 ENABLE_HTTPS_TLS12=1 ENABLE_HTTPS_TLS13=1 ENABLE_HTTP3=0 REPEATS=1 CURL_HTTPS_GET=1 CURL_MAX_TIME="$TMO" ./blockcheck2.sh > "$MDLF" 2>&1
 			cat "$MDLF" >> $L
+			# Статус для LuCI: прогресс заморожен на время мини-прогона - поясняем почему
+			EL=$(( $(date +%s) - T0 ))
+			echo "state=running progress=$DONE/$TOTAL elapsed=$EL domain=$CURDOM (проверка адаптивности)" > "$STATUS"
 			RT_OK=""; RT_FAIL=""
 			for CN in $CHAMP; do
 				A=$(sed -n "${CN}p" "$NORM")
-				if grep -A1 -F -- "nfqws2 $A" "$MDLF" 2>/dev/null | grep -q "!!!!! AVAILABLE"; then
+				# чемпион прошедшим считаетcя только если ОБЕ версии TLS пережили повтор
+				NAV=$(grep -A1 -F -- "nfqws2 $A" "$MDLF" 2>/dev/null | grep -c "!!!!! AVAILABLE")
+				if [ "$NAV" -ge 2 ]; then
 					RT_OK="$RT_OK $CN"
 				else
 					RT_FAIL="$RT_FAIL $CN"
@@ -506,13 +511,14 @@ AWK
 			echo "=== ПРОВЕРКА АДАПТИВНОСТИ ТСПУ (re-test рекомендованных строк: $CHAMP) ===" >> $RFULL
 			for CN in $CHAMP; do
 				A=$(sed -n "${CN}p" "$NORM")
+				NAV=$(grep -A1 -F -- "nfqws2 $A" "$MDLF" 2>/dev/null | grep -c "!!!!! AVAILABLE")
 				echo "Строка $CN (чемпион): $A"
 				echo "Строка $CN: $A" >> $RFULL
-				if grep -A1 -F -- "nfqws2 $A" "$MDLF" 2>/dev/null | grep -q "!!!!! AVAILABLE"; then
-					echo "   Результат мгновенного повтора: ПРОШЛА"
+				if [ "$NAV" -ge 2 ]; then
+					echo "   Результат мгновенного повтора: ПРОШЛА (обе версии TLS)"
 					echo "   Результат: ПРОШЛА мгновенный повтор" >> $RFULL
 				else
-					echo "   Результат мгновенного повтора: НЕ ПРОШЛА (умерла)"
+					echo "   Результат мгновенного повтора: НЕ ПРОШЛА (умерла; версий TLS прошло: $NAV из 2)"
 					echo "   Результат: НЕ ПРОШЛА повтор (умерла)" >> $RFULL
 				fi
 			done

@@ -718,12 +718,21 @@ _val_report() {
 	while IFS= read -r A; do
 		[ -z "$A" ] && continue
 		i=$((i+1)); NALL=$((NALL+1))
-		AV=$(awk -v pat="nfqws2 $A" 'index($0, pat) > 0 { f=1; next } /^- curl_test/ { f=0 } f && /!!!!! AVAILABLE !!!!!/ { c++ } END { print c+0 }' "$VAL_LOG" 2>/dev/null)
-		if [ "$AV" -ge 2 ]; then V="ПРОШЛА (обе версии TLS)"; NOK=$((NOK+1))
-		elif [ "$AV" -eq 1 ]; then V="ПРОШЛА только на одной версии TLS"; NOK=$((NOK+1))
+		# По-версионный подсчёт: какая именно версия TLS прошла
+		AVRES=$(awk -v pat="nfqws2 $A" '
+			/curl_test_https_tls12/ { cur="tls12" }
+			/curl_test_https_tls13/ { cur="tls13" }
+			index($0, pat) > 0 { f=1; next }
+			/^- curl_test/ { f=0 }
+			f && /!!!!! AVAILABLE !!!!!/ { c[cur]++ }
+			END { printf "%d %d", c["tls12"]+0, c["tls13"]+0 }
+		' "$VAL_LOG" 2>/dev/null)
+		AV12=${AVRES%% *}; AV13=${AVRES##* }
+		if [ "${AV12:-0}" -ge 1 ] && [ "${AV13:-0}" -ge 1 ]; then V="ПРОШЛА (обе версии TLS)"; NOK=$((NOK+1))
+		elif [ "${AV12:-0}" -ge 1 ]; then V="ПРОШЛА только на TLS 1.2 (на TLS 1.3 не прошла)"; NOK=$((NOK+1))
+		elif [ "${AV13:-0}" -ge 1 ]; then V="ПРОШЛА только на TLS 1.3 (на TLS 1.2 не прошла)"; NOK=$((NOK+1))
 		else V="НЕ прошла"; fi
 		echo "Стратегия: $V" | tee -a "$VAL_LOG" >> "$VAL_REPORT"
-		echo "   $A" | tee -a "$VAL_LOG" >> "$VAL_REPORT"
 	done < /tmp/tspu_validate_norm.txt
 	if [ "$NOK" -eq 0 ]; then
 		echo "ИТОГ: стратегия НЕ работает на вашем ТСПУ - ни одна попытка не прошла." | tee -a "$VAL_LOG" >> "$VAL_REPORT"
@@ -776,6 +785,8 @@ do_validate_start() {
 	tr -d '\r' < /tmp/tspu_validate.txt | grep -vE '^[[:space:]]*(#|$)' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | tr '\n' ' ' | tr -s ' ' | sed 's/ $//' > /tmp/tspu_validate_norm.txt
 	echo >> /tmp/tspu_validate_norm.txt
 	grep -q . /tmp/tspu_validate_norm.txt || { echo "state=error msg=no strategy rows"; exit 1; }
+	# Новый запуск = старый отчёт сразу стирается
+	: > "$VAL_LOG"; : > "$VAL_REPORT"
 	echo "state=starting" > "$VAL_STATUS"
 	/bin/sh -c "/usr/bin/tspu-test _validate \"$DOM\" \"$REP\" > $VAL_RUNLOG 2>&1 &"
 	sleep 1

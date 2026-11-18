@@ -473,13 +473,15 @@
 		} else if (clean.indexOf('В данный момент производится тестирование') >= 0) {
 			setRunning(true);
 		}
-		/* Вердикт и попытки печатаются дважды (в ИТОГ-блоке и повторно в отчёте) -
-		   берём только часть лога до отчёта, чтобы не дублировать */
+		/* Парс вердикта - только часть лога до отчёта (без дублей в цветных блоках);
+		   в textarea показывается ПОЛНЫЙ лог с отчётом: участник копирует лог вручную,
+		   и отчёт должен быть внутри (фидбек 2.4) */
 		var cut = clean.indexOf('=== ОТЧЁТ ДЛЯ issue #1');
 		var scope = (cut >= 0) ? clean.substring(0, cut) : clean;
 		var lines = scope.split('\n');
-		var shown = lines;
-		if (lines.length > 480) shown = lines.slice(-480);
+		var allLines = clean.split('\n');
+		var shown = allLines;
+		if (allLines.length > 700) shown = allLines.slice(-700);
 		var stick = elAuto.checked;
 		var atBottom = (elLog.scrollTop + elLog.clientHeight >= elLog.scrollHeight - 6);
 		elLog.value = shown.join('\n');

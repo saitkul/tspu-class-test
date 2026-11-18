@@ -38,7 +38,7 @@
 	<h2 class="tspu-h1">TSPU test</h2>
 	<div class="tspu-subtitle">Класс-тест ТСПУ провайдера<span id="tspu_title_ver"></span></div>
 	<div class="cbi-map-descr">
-		<p>Определяет, какие механики десинхронизации пропускает ТСПУ вашего провайдера: 31 стратегия (нарезка / голый фейк / комбинации / двухпакетный hello / шумовая серия дробилки) на TLS 1.2 и TLS 1.3 в режиме SCANLEVEL=force. Вкладка «Тест» печатает вердикт «КЛАСС ТСПУ» и рекомендацию; вкладка «Генератор стратегий» превращает отчёт в готовые строки для профиля Zapret2.</p>
+		<p>Определяет, какие механики десинхронизации пропускает ТСПУ вашего провайдера: 31 стратегия (нарезка / голый фейк / комбинации / двухпакетный hello / шумовая серия дробилки) на TLS 1.2 и TLS 1.3 в режиме SCANLEVEL=force. Вкладка «Тест» печатает вердикт «КЛАСС ТСПУ» и рекомендацию; «Генератор стратегий» превращает отчёт в готовые строки; «Прод-проба» меряет деградацию повторных соединений при живом Zapret2 и ECH в DNS; «Валидатор» проверяет чужие стратегии на вашем ТСПУ; «Канарейка» фоново контролирует живость текущей стратегии.</p>
 		<p class="tspu-note-italic">На время теста служба Zapret2 останавливается и запускается обратно по завершении. Финальную проверку стратегии всегда делайте в браузере в режиме Инкогнито.</p>
 	</div>
 
@@ -46,10 +46,13 @@
 		<div id="tspu_tabs" style="margin-bottom:.6em">
 			<button id="tspu_tab_btn_test" type="button" onclick="tspuTab('test')">Тест</button>
 			<button id="tspu_tab_btn_gen" type="button" onclick="tspuTab('gen')">Генератор стратегий</button>
+			<button id="tspu_tab_btn_prod" type="button" onclick="tspuTab('prod')">Прод-проба</button>
+			<button id="tspu_tab_btn_val" type="button" onclick="tspuTab('val')">Валидатор</button>
+			<button id="tspu_tab_btn_can" type="button" onclick="tspuTab('can')">Канарейка</button>
 		</div>
 		<div id="tspu_tab_test">
 		<div class="cbi-value">
-			<label class="cbi-value-title" for="tspu_domain">Домен для теста (за один прогон — один домен)</label>
+			<label class="cbi-value-title" for="tspu_domain">Домены для теста (несколько — через пробел; у каждого свой вердикт)</label>
 			<div class="cbi-value-field">
 				<input id="tspu_domain" type="text" class="cbi-input-text" style="width:100%; max-width:420px" value="www.youtube.com" />
 				<details style="margin-top:.3em; color:#999">
@@ -103,7 +106,7 @@
 				<button id="tspu_btn_copy" class="btn cbi-button cbi-button-neutral" onclick="tspuCopy()">Скопировать отчёт</button>
 				<button id="tspu_btn_prompt" class="btn cbi-button cbi-button-neutral" onclick="tspuPrompt()">Промт для нейросети</button>
 				<div id="tspu_status" style="margin-top:.3em; font-size:.92em"></div>
-				<div style="color:#888; margin-top:.3em; font-size:.92em">В терминале можно:<br/>Остановить тест: /usr/bin/tspu-test stop<br/>Следить за прогрессом: /usr/bin/tspu-test status</div>
+				<div style="color:#ccc; margin-top:.3em; font-size:.92em; font-weight:bold; text-transform:uppercase">В терминале можно:<br/>Остановить тест: /usr/bin/tspu-test stop<br/>Следить за прогрессом: /usr/bin/tspu-test status</div>
 			</div>
 		</div>
 		<div class="cbi-value" id="tspu_verdict" style="display:none">
@@ -198,6 +201,129 @@
 				</div>
 			</div>
 		</div>
+
+		<div id="tspu_tab_prod" style="display:none">
+			<p class="cbi-section-descr">Стресс повторных соединений при <b>живом Zapret2</b>: соединение к сайту примерно раз в секунду, отказы меряются по 10-секундным окнам. Адаптивный ТСПУ пропускает первые соединения и начинает резать последующие — проба ловит момент деградации. Это проба <b>соединений</b>, а не видеопотока; итоговую проверку делайте воспроизведением видео.</p>
+			<div class="cbi-value">
+				<label class="cbi-value-title" for="prod_domain">Домен или узел</label>
+				<div class="cbi-value-field"><input id="prod_domain" type="text" value="www.youtube.com" style="max-width:420px"></div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title" for="prod_dur">Длительность, с</label>
+				<div class="cbi-value-field"><input id="prod_dur" type="text" value="60" style="max-width:120px"> (10–300)</div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Управление</label>
+				<div class="cbi-value-field">
+					<button class="btn cbi-button" onclick="prodStart()">Запустить пробу</button>
+					<button class="btn cbi-button cbi-button-negative" onclick="prodStop()">Остановить</button>
+					<button class="btn cbi-button cbi-button-neutral" onclick="prodClear()">Очистить отчёт</button>
+					<div style="color:#888; margin-top:.3em; font-size:.92em">Проба идёт при запущенном Zapret2 — меряет вашу текущую стратегию. Если Zapret2 остановлен, будет предупреждение (проба меряет голый ТСПУ).</div>
+				</div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Состояние</label>
+				<div class="cbi-value-field"><div id="prod_status" style="white-space:pre-wrap">—</div></div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Лог пробы</label>
+				<div class="cbi-value-field"><textarea id="prod_log" readonly="readonly" wrap="off" style="width:100%; height:240px; font-family:monospace; white-space:pre; padding:.5em"></textarea></div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">ECH-проба (DNS)</label>
+				<div class="cbi-value-field">
+					<button class="btn cbi-button cbi-button-neutral" onclick="echRun()">Проверить ECH у домена выше</button>
+					<div id="ech_out" style="white-space:pre-wrap; color:#888; margin-top:.4em">Проверяет, публикует ли домен ECH-параметр в DNS (HTTPS-запись через dns.google). Проверка отвечает только на вопрос «обещает ли сайт такую защиту» — сам роутер её включить не может, современные браузеры используют ECH автоматически.</div>
+				</div>
+			</div>
+		</div>
+
+		<div id="tspu_tab_val" style="display:none">
+			<p class="cbi-section-descr">Проверка <b>чужих стратегий</b> на вашем ТСПУ: вставьте строки-аргументы nfqws2 (то, что идёт в поле script — одна стратегия на строку), укажите домен — каждая строка прогоняется через blockcheck2. Zapret2 на время скана останавливается и запускается обратно.</p>
+			<div class="cbi-value">
+				<label class="cbi-value-title" for="val_text">Стратегия для проверки</label>
+				<div class="cbi-value-field">
+					<textarea id="val_text" wrap="off" style="width:100%; height:140px; font-family:monospace; white-space:pre; padding:.5em" placeholder="--payload=tls_client_hello --lua-desync=multidisorder:pos=midsld&#10;--payload=tls_client_hello --lua-desync=fakedsplit:pos=midsld:tcp_md5"></textarea>
+					<div style="color:#888; font-size:.92em; margin-top:.3em">Вставьте стратегию ЦЕЛИКОМ — можно многострочно, как в поле script Zapret2 (строки склеиваются в одну стратегию). Без кавычек, $, ;, |, &amp;, скобок. Несколько разных стратегий проверяйте по очереди.</div>
+				</div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title" for="val_domain">Домен для проверки</label>
+				<div class="cbi-value-field"><input id="val_domain" type="text" value="www.youtube.com" style="max-width:420px"></div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title" for="val_rep">Повторов каждой строки</label>
+				<div class="cbi-value-field">
+					<select id="val_rep" class="cbi-input-select" style="width:auto">
+						<option value="1">1</option>
+						<option value="2" selected="selected">2</option>
+						<option value="3">3</option>
+					</select>
+				</div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Управление</label>
+				<div class="cbi-value-field">
+					<button class="btn cbi-button" onclick="valStart()">Валидировать</button>
+					<button class="btn cbi-button cbi-button-negative" onclick="valStop()">Остановить</button>
+					<button class="btn cbi-button cbi-button-neutral" onclick="valClear()">Очистить отчёт</button>
+				</div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Состояние</label>
+				<div class="cbi-value-field"><div id="val_status" style="white-space:pre-wrap">—</div></div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Результат</label>
+				<div class="cbi-value-field"><textarea id="val_log" readonly="readonly" wrap="off" style="width:100%; height:200px; font-family:monospace; white-space:pre; padding:.5em"></textarea></div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Полный лог скана</label>
+				<div class="cbi-value-field">
+					<details style="color:#888">
+						<summary style="cursor:pointer">Показать технический лог blockcheck2 (для разбора ошибок)</summary>
+						<textarea id="val_rawlog" readonly="readonly" wrap="off" style="width:100%; height:200px; font-family:monospace; white-space:pre; padding:.5em; margin-top:.4em"></textarea>
+					</details>
+				</div>
+			</div>
+		</div>
+
+		<div id="tspu_tab_can" style="display:none">
+			<p class="cbi-section-descr">Фоновый контроль живости <b>текущей стратегии</b>: каждые N секунд один запрос через запущенный Zapret2, история в /tmp/tspu_canary.log (чистится перезагрузкой). Деградация стратегии видна по появлению FAIL раньше, чем пропадёт YouTube. Ниже — история применений профилей.</p>
+			<div class="cbi-value">
+				<label class="cbi-value-title" for="can_domain">Домен для контроля</label>
+				<div class="cbi-value-field"><input id="can_domain" type="text" value="www.youtube.com" style="max-width:420px"></div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title" for="can_iv">Интервал, с</label>
+				<div class="cbi-value-field"><input id="can_iv" type="text" value="300" style="max-width:120px"> (60–3600)</div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Управление</label>
+				<div class="cbi-value-field">
+					<button class="btn cbi-button" onclick="canStart()">Запустить канарейку</button>
+					<button class="btn cbi-button cbi-button-negative" onclick="canStop()">Остановить</button>
+					<button class="btn cbi-button cbi-button-neutral" onclick="canClear()">Очистить логи</button>
+					<div style="color:#888; margin-top:.3em; font-size:.92em">Канарейка работает в фоне до перезагрузки роутера или остановки. Запросы идут через текущую стратегию Zapret2 — она должна быть запущена.</div>
+				</div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Состояние и сводка</label>
+				<div class="cbi-value-field"><div id="can_status" style="white-space:pre-wrap">—</div></div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">История канарейки</label>
+				<div class="cbi-value-field"><textarea id="can_log" readonly="readonly" wrap="off" style="width:100%; height:200px; font-family:monospace; white-space:pre; padding:.5em"></textarea></div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">История профилей</label>
+				<div class="cbi-value-field">
+					<textarea id="can_profiles" readonly="readonly" wrap="off" style="width:100%; height:140px; font-family:monospace; white-space:pre; padding:.5em"></textarea>
+					<div style="color:#888; font-size:.92em; margin-top:.3em">Что и когда применялось кнопками «Вариант N» (метка и первая строка стратегии).</div>
+				</div>
+			</div>
+		</div>
+
 <div class="cbi-value" style="margin-top:.6em; color:#888">
 			<span>Полные логи на роутере: /tmp/class_test.log (сырой), /tmp/class_test.log.short (краткий, для issue) — создаются при запуске теста, очищаются при перезагрузке роутера. Скрипт: /usr/bin/tspu-test.
 			Проект: <a href="https://github.com/saitkul/tspu-class-test/" target="_blank" rel="noopener">github.com/saitkul/tspu-class-test</a></span>
@@ -465,18 +591,18 @@
 	}
 
 	window.tspuStart = function () {
-		/* Очистка домена: https://, пути, порты и прочий хвост убираются.
-		   За один прогон — один домен: берём первый. */
+		/* Очистка доменов: https://, пути, порты и прочий хвост убираются.
+		   Несколько доменов - через пробел: прогонятся очередью, у каждого свой вердикт. */
 		var doms = tspuCleanDomain(elDomain.value);
 		if (!doms.length) {
 			elStatus.textContent = 'Введите домен, например www.youtube.com';
 			return;
 		}
 		if (doms.length > 1) {
-			elStatus.textContent = 'За один прогон — один домен: взят ' + doms[0];
+			elStatus.textContent = 'Будет проверено доменов: ' + doms.length + ' (по очереди, у каждого свой вердикт)';
 		}
-		elDomain.value = doms[0];
-		var url = U_START + '?domain=' + encodeURIComponent(elDomain.value) +
+		elDomain.value = doms.join(' ');
+		var url = U_START + '?domain=' + encodeURIComponent(doms.join(' ')) +
 			'&repeats=' + encodeURIComponent(elRep.value) +
 			'&wait=' + encodeURIComponent(elWait.value) +
 			'&ipv6=' + (function () { var e = document.getElementById('tspu_ipv6'); return e && e.checked ? '1' : '0'; })();
@@ -585,14 +711,137 @@
 	};
 
 	/* ================= Вкладки ================= */
+	var curTab = 'test';
 	window.tspuTab = function (name) {
-		var test = name === 'test';
-		document.getElementById('tspu_tab_test').style.display = test ? '' : 'none';
-		document.getElementById('tspu_tab_gen').style.display = test ? 'none' : '';
-		document.getElementById('tspu_tab_btn_test').className = test ? 'tspu-active' : '';
-		document.getElementById('tspu_tab_btn_gen').className = test ? '' : 'tspu-active';
+		curTab = name;
+		var tabs = ['test', 'gen', 'prod', 'val', 'can'];
+		for (var i = 0; i < tabs.length; i++) {
+			var t = (name === tabs[i]);
+			var el = document.getElementById('tspu_tab_' + tabs[i]);
+			if (el) el.style.display = t ? '' : 'none';
+			var btn = document.getElementById('tspu_tab_btn_' + tabs[i]);
+			if (btn) btn.className = t ? 'tspu-active' : '';
+		}
+		if (t === true && name === 'prod') prodRefresh();
+		if (t === true && name === 'val') valRefresh();
+		if (t === true && name === 'can') canRefresh();
 	};
 	document.getElementById('tspu_tab_btn_test').className = 'tspu-active';
+
+	/* ================= Прод-проба / Валидатор / Канарейка ================= */
+	var U_PROD_START = '<%=luci.dispatcher.build_url("admin/services/tspu-test/prodstart")%>';
+	var U_PROD_STOP = '<%=luci.dispatcher.build_url("admin/services/tspu-test/prodstop")%>';
+	var U_PROD_STATUS = '<%=luci.dispatcher.build_url("admin/services/tspu-test/prodstatus")%>';
+	var U_PROD_LOG = '<%=luci.dispatcher.build_url("admin/services/tspu-test/prodlog")%>';
+	var U_ECH = '<%=luci.dispatcher.build_url("admin/services/tspu-test/ech")%>';
+	var U_VAL_START = '<%=luci.dispatcher.build_url("admin/services/tspu-test/valstart")%>';
+	var U_VAL_STOP = '<%=luci.dispatcher.build_url("admin/services/tspu-test/valstop")%>';
+	var U_VAL_STATUS = '<%=luci.dispatcher.build_url("admin/services/tspu-test/valstatus")%>';
+	var U_VAL_LOG = '<%=luci.dispatcher.build_url("admin/services/tspu-test/vallog")%>';
+	var U_VAL_REPORT = '<%=luci.dispatcher.build_url("admin/services/tspu-test/valreport")%>';
+	var U_CAN_START = '<%=luci.dispatcher.build_url("admin/services/tspu-test/canarystart")%>';
+	var U_CAN_STOP = '<%=luci.dispatcher.build_url("admin/services/tspu-test/canarystop")%>';
+	var U_CAN_STATUS = '<%=luci.dispatcher.build_url("admin/services/tspu-test/canarystatus")%>';
+	var U_CAN_LOG = '<%=luci.dispatcher.build_url("admin/services/tspu-test/canarylog")%>';
+	var U_CAN_CLEAR = '<%=luci.dispatcher.build_url("admin/services/tspu-test/canaryclear")%>';
+	var U_PRODCLEAR = '<%=luci.dispatcher.build_url("admin/services/tspu-test/prodclear")%>';
+	var U_VALCLEAR = '<%=luci.dispatcher.build_url("admin/services/tspu-test/valclear")%>';
+	var U_PROFILES = '<%=luci.dispatcher.build_url("admin/services/tspu-test/profiles")%>';
+	var elProdS = document.getElementById('prod_status');
+	var elProdL = document.getElementById('prod_log');
+	var elValS = document.getElementById('val_status');
+	var elValL = document.getElementById('val_log');
+	var elCanS = document.getElementById('can_status');
+	var elCanL = document.getElementById('can_log');
+	var elCanP = document.getElementById('can_profiles');
+	var elEch = document.getElementById('ech_out');
+	function xget(url, ok, el) {
+		xhr(url, ok, function () { if (el) el.textContent = 'HTTP-ошибка обращения к роутеру (эндпоинт ' + url.split('/').pop() + ')'; });
+	}
+	function prodHuman(t) {
+		if (!t) return '—';
+		var st = (t.match(/state=(\w+)/) || [])[1] || '';
+		var ok = (t.match(/ok=(\d+)/) || [])[1] || '0';
+		var fl = (t.match(/fail=(\d+)/) || [])[1] || '0';
+		var ff = (t.match(/first_fail=(\d+)/) || [])[1] || '0';
+		var alive = (t.match(/alive=(\d+)/) || [])[1] === '1';
+		var el = (t.match(/elapsed=(\d+)/) || [])[1] || '0';
+		if (st === 'done') return 'Проба завершена: соединений ' + ((+ok) + (+fl)) + ', успешных ' + ok + ', отказов ' + fl + ((+ff > 0) ? ' (первый отказ на ' + ff + '-й секунде)' : '') + '. Подробности — в логе ниже.';
+		if (st === 'running') return 'Идёт проверка: прошло ' + el + ' с, успешных соединений ' + ok + ', отказов ' + fl + '...';
+		if (st === 'starting') return 'Запуск...';
+		if (st === 'stopped') return 'Остановлено.';
+		if (!alive) return 'Проба не запускалась.';
+		return t;
+	}
+	window.prodRefresh = function () {
+		xget(U_PROD_STATUS, function (t) { elProdS.textContent = prodHuman(t); }, elProdS);
+		xget(U_PROD_LOG, function (t) { elProdL.value = t || ''; elProdL.scrollTop = elProdL.scrollHeight; }, elProdL);
+	};
+	window.prodStart = function () {
+		elProdS.textContent = 'Запускаю пробу...';
+		xget(U_PROD_START + '?domain=' + encodeURIComponent(document.getElementById('prod_domain').value) + '&dur=' + encodeURIComponent(document.getElementById('prod_dur').value), function (t) { elProdS.textContent = t; prodRefresh(); }, elProdS);
+	};
+	window.prodStop = function () {
+		xget(U_PROD_STOP, function (t) { elProdS.textContent = t; prodRefresh(); }, elProdS);
+	};
+	window.echRun = function () {
+		elEch.textContent = 'Проверяю DNS...';
+		xget(U_ECH + '?domain=' + encodeURIComponent(document.getElementById('prod_domain').value), function (t) { elEch.textContent = t || 'нет ответа'; }, elEch);
+	};
+	function valHuman(t) {
+		if (!t) return '—';
+		var alive = (t.match(/alive=(\d+)/) || [])[1] === '1';
+		var st = (t.match(/state=(\w+)/) || [])[1] || '';
+		if (alive) return 'Идёт проверка (Zapret2 на это время остановлен)...';
+		if (st === 'done') return 'Проверка завершена — результат ниже.';
+		if (st === 'error') return (t || '').replace(/\n+$/, '');
+		return 'Ожидание запуска.';
+	}
+	var elValRaw = document.getElementById('val_rawlog');
+	window.valRefresh = function () {
+		xget(U_VAL_STATUS, function (t) { elValS.textContent = valHuman(t); }, elValS);
+		xget(U_VAL_REPORT, function (t) { elValL.value = t || 'Отчёта ещё нет — запустите проверку.'; }, elValL);
+		xget(U_VAL_LOG, function (t) { elValRaw.value = t || ''; }, elValRaw);
+	};
+	window.valStart = function () {
+		var txt = document.getElementById('val_text').value || '';
+		if (!txt.replace(/\s/g, '')) { elValS.textContent = 'Вставьте строки стратегии'; return; }
+		elValS.textContent = 'Запускаю валидацию...';
+		elValL.value = 'Проверка идёт - результат появится по завершении...';
+		xget(U_VAL_START + '?domain=' + encodeURIComponent(document.getElementById('val_domain').value) + '&rep=' + encodeURIComponent(document.getElementById('val_rep').value) + '&text=' + encodeURIComponent(txt), function (t) { elValS.textContent = t; valRefresh(); }, elValS);
+	};
+	window.valStop = function () {
+		xget(U_VAL_STOP, function (t) { elValS.textContent = t; valRefresh(); }, elValS);
+	};
+	window.canRefresh = function () {
+		xget(U_CAN_STATUS, function (t) { elCanS.textContent = (t || 'Канарейка не запускалась.').replace(/\n+$/, ''); }, elCanS);
+		xget(U_CAN_LOG, function (t) { elCanL.value = t || ''; elCanL.scrollTop = elCanL.scrollHeight; }, elCanL);
+		xget(U_PROFILES, function (t) { elCanP.value = t || ''; }, elCanP);
+	};
+	window.canStart = function () {
+		elCanS.textContent = 'Запускаю канарейку...';
+		xget(U_CAN_START + '?domain=' + encodeURIComponent(document.getElementById('can_domain').value) + '&iv=' + encodeURIComponent(document.getElementById('can_iv').value), function (t) { elCanS.textContent = t; canRefresh(); }, elCanS);
+	};
+	window.canStop = function () {
+		xget(U_CAN_STOP, function (t) { elCanS.textContent = t; canRefresh(); }, elCanS);
+	};
+	window.canClear = function () {
+		xget(U_CAN_CLEAR, function (t) { elCanS.textContent = t; canRefresh(); }, elCanS);
+	};
+	window.prodClear = function () {
+		xget(U_PRODCLEAR, function (t) { elProdS.textContent = t; prodRefresh(); }, elProdS);
+	};
+	window.valClear = function () {
+		xget(U_VALCLEAR, function (t) { elValS.textContent = t; valRefresh(); }, elValS);
+	};
+	setInterval(function () {
+		if (curTab === 'prod') prodRefresh();
+		else if (curTab === 'val') valRefresh();
+		else if (curTab === 'can') canRefresh();
+	}, 2500);
+	prodRefresh();
+	valRefresh();
+	canRefresh();
 
 	/* ================= Генератор стратегий ================= */
 	function genEscape(s) { return (s || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(); }

@@ -578,6 +578,11 @@ AWK
 	  { print }
 	' $L > $L.short
 
+	# Краткий лог самодостаточен (фидбек участника: «в лог не копируется отчёт»):
+	# в начале ИТОГ+ОТЧЁТ, затем сырой лог blockcheck2
+	{ echo "=== ИТОГ И ОТЧЁТ TSPU TEST ==="; cat "$RFULL"; echo; echo "=== СЫРОЙ ЛОГ BLOCKCHECK2 ==="; cat "$L.short"; } > "$L.short.new" 2>/dev/null
+	mv "$L.short.new" "$L.short" 2>/dev/null
+
 	MODEL=$(cat /tmp/sysinfo/model 2>/dev/null)
 	FW=$(. /etc/openwrt_release 2>/dev/null && echo "$DISTRIB_DESCRIPTION ($DISTRIB_ARCH)")
 	echo

@@ -645,11 +645,11 @@ _prod() {
 		TS=$(date +%s)
 		if [ -n "$CODE" ] && [ "$CODE" != "000" ]; then
 			N_OK=$((N_OK+1))
-			echo "$TS [$(date '+%H:%M:%S')] OK код=$CODE время=${TT:-?}с" >> "$PROD_LOG"
+			echo "[$(date '+%H:%M:%S')] OK код=$CODE время=${TT:-?}с #${TS}" >> "$PROD_LOG"
 		else
 			N_FAIL=$((N_FAIL+1))
 			[ -z "$TFAIL" ] && TFAIL=$((TS - T0))
-			echo "$TS [$(date '+%H:%M:%S')] СБОЙ" >> "$PROD_LOG"
+			echo "[$(date '+%H:%M:%S')] СБОЙ #${TS}" >> "$PROD_LOG"
 		fi
 		echo "state=running elapsed=$((TS - T0))/$DUR ok=$N_OK fail=$N_FAIL" > "$PROD_STATUS"
 		sleep 1
@@ -659,8 +659,8 @@ _prod() {
 	WT0=$T0
 	while [ $WT0 -lt $TE ]; do
 		WE=$((WT0 + 10)); [ $WE -gt $TE ] && WE=$TE
-		WOK=$(awk -v a=$((WT0 + 1)) -v b=$WE '$1>=a && $1<=b && $3=="OK"' "$PROD_LOG" | wc -l)
-		WFL=$(awk -v a=$((WT0 + 1)) -v b=$WE '$1>=a && $1<=b && $3=="СБОЙ"' "$PROD_LOG" | wc -l)
+		WOK=$(awk -v a=$((WT0 + 1)) -v b=$WE '$2=="OK" && match($0, /#[0-9]+$/) { e=substr($0, RSTART+1, RLENGTH-1); if (e>=a && e<=b) c++ } END { print c+0 }' "$PROD_LOG")
+		WFL=$(awk -v a=$((WT0 + 1)) -v b=$WE '$2=="СБОЙ" && match($0, /#[0-9]+$/) { e=substr($0, RSTART+1, RLENGTH-1); if (e>=a && e<=b) c++ } END { print c+0 }' "$PROD_LOG")
 		echo "  окно $((WT0 - T0 + 1))-$((WE - T0))с: OK=$WOK FAIL=$WFL" | tee -a "$PROD_LOG"
 		WT0=$WE
 	done

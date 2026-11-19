@@ -504,17 +504,22 @@ AWK
 			MF=/tmp/tspu_curl_metrics.d$DOMNUM
 			cat > "$CURLW" <<'PWRAP'
 #!/bin/sh
+# Гейт: перехватываем ТОЛЬКО timed-GET к домену теста. DoH-проверка, контрольные
+# домены и прочие вызовы идут verbatim (фидбек 2.5: без гейта JSON-ответ DoH
+# подменялся временем и blockcheck2 прерывался на «all DoH servers failed»).
 real_curl=/usr/bin/curl
+url=
+for a in "$@"; do case "$a" in https://*) url=$a ;; esac; done
+host=${url#*://}; host=${host%%/*}
+case " $TSPU_CURL_DOMAIN " in *" $host "*) ;; *) exec "$real_curl" "$@" ;; esac
+case "$*" in *'%{time_total}'*) ;; *) exec "$real_curl" "$@" ;; esac
 out=$("$real_curl" "$@" --write-out '\nTSPU|%{http_code}|%{size_download}|%{time_total}' 2>/dev/null)
 code=$?
 line=$(printf '%s\n' "$out" | grep '^TSPU|' | tail -n 1)
 if [ -n "$line" ]; then
 	rest=${line#TSPU|}; c2=${rest%%|*}; rest=${rest#*|}; b=${rest%%|*}; rest=${rest#*|}; t=${rest##*|}
 	ver=
-	url=
-	for a in "$@"; do
-		case "$a" in --tlsv1.2) ver=1.2 ;; --tlsv1.3) ver=1.3 ;; https://*) url=$a ;; esac
-	done
+	for a in "$@"; do case "$a" in --tlsv1.2) ver=1.2 ;; --tlsv1.3) ver=1.3 ;; esac; done
 	[ -n "$url" ] && printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date '+%H:%M:%S')" "${ver:-?}" "$c2" "$b" "$t" "$url" >> "$TSPU_CURL_METRICS"
 	printf '%s' "$t"
 	exit $code
@@ -525,22 +530,28 @@ PWRAP
 			chmod +x "$CURLW"
 			: > "$MF"
 			export TSPU_CURL_METRICS="$MF"
+			export TSPU_CURL_DOMAIN="$CURDOM"
 			BATCH=1 SCANLEVEL=force TEST=custom LIST_HTTPS_TLS12=$MINI LIST_HTTPS_TLS13=$MINI DOMAINS="$CURDOM" IPVS=$IP0 ENABLE_HTTP=0 ENABLE_HTTPS_TLS12=1 ENABLE_HTTPS_TLS13=1 ENABLE_HTTP3=0 REPEATS=1 CURL_HTTPS_GET=1 CURL_MAX_TIME="$TMO" CURL="$CURLW" ./blockcheck2.sh > "$MDLF" 2>&1
 			cat "$MDLF" >> $L
 			# Статус для LuCI: прогресс заморожен на время мини-прогона - поясняем почему
 			EL=$(( $(date +%s) - T0 ))
 			echo "state=running progress=$DONE/$TOTAL elapsed=$EL domain=$CURDOM (проверка адаптивности)" > "$STATUS"
-			RT_OK=""; RT_FAIL=""
+			RT_OK=""; RT_DIED=""; RT_BROKEN=""
 			for CN in $CHAMP; do
 				# ВАЖНО: не $A - эта переменная хранит путь к awk-программе парсера,
 				# затирание ломало парс СЛЕДУЮЩЕГО домена (awk -f <стратегия>)
 				RA=$(sed -n "${CN}p" "$NORM")
+				# Гвард целостности: 0 вхождений строки в лог мини-скана = скан
+				# прервался ДО проверки стратегии (DoH/сеть) - это НЕ «умерла»
+				SL=$(grep -cF -- "nfqws2 $RA" "$MDLF" 2>/dev/null)
 				# чемпион прошедшим считаетcя только если ОБЕ версии TLS пережили повтор
 				NAV=$(awk -v pat="nfqws2 $RA" 'index($0, pat) > 0 { f=1; next } /^- curl_test/ { f=0 } f && /!!!!! AVAILABLE !!!!!/ { c++ } END { print c+0 }' "$MDLF" 2>/dev/null)
-				if [ "$NAV" -ge 2 ]; then
+				if [ "${SL:-0}" -eq 0 ]; then
+					RT_BROKEN="$RT_BROKEN $CN"
+				elif [ "$NAV" -ge 2 ]; then
 					RT_OK="$RT_OK $CN"
 				else
-					RT_FAIL="$RT_FAIL $CN"
+					RT_DIED="$RT_DIED $CN"
 				fi
 			done
 			rm -f "$MINI"
@@ -582,7 +593,7 @@ PWRAP
 				echo "   Контроль данных: GET-проб не зафиксировано."
 				echo "   Контроль данных: GET-проб нет." >> $RFULL
 			fi
-			if [ -n "$RT_FAIL" ]; then
+			if [ -n "$RT_DIED" ]; then
 				echo "ВЕРДИКТ: ТСПУ АДАПТИВНЫЙ - рекомендованная стратегия прошла в скане и умерла при повторе."
 				echo "В проде ожидайте деградацию: длинные потоки (видео) режутся через 5-15 с даже при зелёном скане."
 				echo "Меры: дробилка (вариант 5) - двухсторонний десинк не даёт ТСПУ чистого паттерна;"
@@ -598,6 +609,14 @@ PWRAP
 				{
 					echo "ВЕРДИКТ: адаптив не пойман (рекомендованная строка пережила повтор). Длинные потоки проверяйте видео."
 				} >> $RFULL
+			elif [ -n "$RT_BROKEN" ]; then
+				if grep -q "could not find working DoH server" "$MDLF" 2>/dev/null; then
+					echo "ВЕРДИКТ: re-test не выполнился - blockcheck2 прервался на DoH-проверке. Вердикт об адаптивности неопределён."
+					echo "ВЕРДИКТ: re-test не выполнился (DoH)." >> $RFULL
+				else
+					echo "ВЕРДИКТ: re-test не выполнился - скан прервался до проверки стратегий. Вердикт об адаптивности неопределён."
+					echo "ВЕРДИКТ: re-test не выполнился (скан прервался)." >> $RFULL
+				fi
 			else
 				echo "Re-test не дал результата (стратегия не найдена в логе повтора) - пришлите краткий лог."
 				echo "Re-test не дал результата." >> $RFULL
@@ -677,7 +696,9 @@ PROD_RUNLOG=/tmp/tspu_prod_run.log
 prod_alive() { [ -f "$PROD_PIDF" ] && kill -0 "$(cat "$PROD_PIDF" 2>/dev/null)" 2>/dev/null; }
 
 prod_stop() {
-	if prod_alive; then kill "$(cat "$PROD_PIDF")" 2>/dev/null; rm -f "$PROD_PIDF"; echo "state=stopped"; else echo "state=idle"; fi
+	pkill -f '[t]spu-test _prod' 2>/dev/null
+	if prod_alive; then kill "$(cat "$PROD_PIDF")" 2>/dev/null; rm -f "$PROD_PIDF"; fi
+	echo "Прод-проба остановлена."
 }
 
 prod_status() {
@@ -764,7 +785,10 @@ VAL_RUNLOG=/tmp/tspu_val_run.log
 val_alive() { [ -f "$VAL_PIDF" ] && kill -0 "$(cat "$VAL_PIDF" 2>/dev/null)" 2>/dev/null; }
 
 val_stop() {
-	if val_alive; then kill "$(cat "$VAL_PIDF")" 2>/dev/null; rm -f "$VAL_PIDF"; /etc/init.d/zapret2 start >/dev/null 2>&1; echo "Валидация остановлена."; else echo "Валидация и так не запущена."; fi
+	pkill -f '[t]spu-test _validate' 2>/dev/null
+	if val_alive; then kill "$(cat "$VAL_PIDF")" 2>/dev/null; rm -f "$VAL_PIDF"; fi
+	/etc/init.d/zapret2 start >/dev/null 2>&1
+	echo "Валидация остановлена."
 }
 
 VAL_REPORT=/tmp/tspu_val.report
@@ -908,7 +932,10 @@ do_canary_start() {
 }
 
 canary_stop() {
-	if can_alive; then kill "$(cat "$CAN_PIDF")" 2>/dev/null; rm -f "$CAN_PIDF"; echo "$(date '+%Y-%m-%d %H:%M:%S') — канарейка остановлена" >> "$CAN_LOG"; echo "Канарейка остановлена."; else echo "Канарейка и так не запущена."; fi
+	pkill -f '[t]spu-test _canary' 2>/dev/null
+	if can_alive; then kill "$(cat "$CAN_PIDF")" 2>/dev/null; rm -f "$CAN_PIDF"; fi
+	echo "$(date '+%Y-%m-%d %H:%M:%S') — канарейка остановлена" >> "$CAN_LOG"
+	echo "Канарейка остановлена."
 }
 
 canary_status() {

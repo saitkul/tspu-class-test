@@ -66,7 +66,7 @@ do_start() {
 }
 
 do_stop() {
-	if pid_alive; then kill "$(cat "$PIDF" 2>/dev/null)" 2>/dev/null; fi
+	if pid_alive; then kill -9 "$(cat "$PIDF" 2>/dev/null)" 2>/dev/null; fi
 	# Страховка: TERM по runner-процессу срабатывает на его trap (v7) -
 	# blockcheck2 останавливается, Zapret2 запускается обратно.
 	kill $(pgrep -f '[t]spu-test _run') 2>/dev/null
@@ -692,13 +692,16 @@ PWRAP
 # приложения процесс был запущен (PID-файлы переживают переустановки).
 # ВАЖНО: паттерн = ОТДЕЛЬНЫЙ аргумент (_canary), без пробелов - /proc/PID/cmdline
 # хранит аргументы NUL-разделёнными строками, "tspu-test _canary" с пробелом
-# физически не матчится (фидбек 2.5: канарейка пережила stop из-за этого)
+# физически не матчится (фидбек 2.5: канарейка пережила stop из-за этого).
+# ВАЖНО-2: только kill -9! TERM проглатывался trap-ом раннеров (handler без exit
+# возвращал управление в while true - процесс продолжал цикл; вся история
+# "Остановить не помогает" была про это)
 hs_kill_runners() {
 	for p in /proc/[0-9]*/cmdline; do
 		grep -qa "$1" "$p" 2>/dev/null || continue
 		pid=${p#/proc/}; pid=${pid%/cmdline}
 		[ "$pid" = "$$" ] && continue
-		kill "$pid" 2>/dev/null
+		kill -9 "$pid" 2>/dev/null
 	done
 }
 
@@ -713,7 +716,7 @@ prod_stop() {
 	touch /tmp/tspu_prod.stop 2>/dev/null
 	pkill -f '[t]spu-test _prod' 2>/dev/null
 	hs_kill_runners "_prod"
-	if prod_alive; then kill "$(cat "$PROD_PIDF")" 2>/dev/null; rm -f "$PROD_PIDF"; fi
+	if prod_alive; then kill -9 "$(cat "$PROD_PIDF")" 2>/dev/null; rm -f "$PROD_PIDF"; fi
 	echo "Прод-проба остановлена."
 }
 
@@ -729,7 +732,8 @@ prod_status() {
 _prod() {
 	DOM=$1; DUR=$2
 	echo $$ > "$PROD_PIDF"
-	trap 'rm -f "$PROD_PIDF"' EXIT INT TERM
+	trap 'rm -f "$PROD_PIDF"' EXIT
+	trap 'rm -f "$PROD_PIDF"; exit 0' INT TERM
 	: > "$PROD_LOG"
 	if pgrep nfqws2 >/dev/null 2>&1; then MODE="Zapret2 работает - проба меряет вашу текущую стратегию"; else MODE="Zapret2 не запущен - проба меряет ТСПУ без обхода"; fi
 	T0=$(date +%s); TE=$((T0 + DUR)); N_OK=0; N_FAIL=0; TFAIL=""
@@ -807,7 +811,7 @@ val_alive() { [ -f "$VAL_PIDF" ] && kill -0 "$(cat "$VAL_PIDF" 2>/dev/null)" 2>/
 val_stop() {
 	pkill -f '[t]spu-test _validate' 2>/dev/null
 	hs_kill_runners "_validate"
-	if val_alive; then kill "$(cat "$VAL_PIDF")" 2>/dev/null; rm -f "$VAL_PIDF"; fi
+	if val_alive; then kill -9 "$(cat "$VAL_PIDF")" 2>/dev/null; rm -f "$VAL_PIDF"; fi
 	/etc/init.d/zapret2 start >/dev/null 2>&1
 	echo "Валидация остановлена."
 }
@@ -851,7 +855,8 @@ _validate() {
 	echo $$ > "$VAL_PIDF"
 	WAS=0
 	pgrep nfqws2 >/dev/null 2>&1 && { WAS=1; /etc/init.d/zapret2 stop >/dev/null 2>&1; }
-	trap 'rm -f "$VAL_PIDF"; [ "$WAS" = 1 ] && /etc/init.d/zapret2 start >/dev/null 2>&1' EXIT INT TERM
+	trap 'rm -f "$VAL_PIDF"; [ "$WAS" = 1 ] && /etc/init.d/zapret2 start >/dev/null 2>&1' EXIT
+	trap 'rm -f "$VAL_PIDF"; [ "$WAS" = 1 ] && /etc/init.d/zapret2 start >/dev/null 2>&1; exit 0' INT TERM
 	S=/tmp/tspu_validate_norm.txt
 	L=/tmp/tspu_val.log
 	: > "$L"
@@ -910,7 +915,8 @@ can_alive() { [ -f "$CAN_PIDF" ] && kill -0 "$(cat "$CAN_PIDF" 2>/dev/null)" 2>/
 _canary() {
 	DOM=$1; IV=$2
 	echo $$ > "$CAN_PIDF"
-	trap 'rm -f "$CAN_PIDF"' EXIT INT TERM
+	trap 'rm -f "$CAN_PIDF"' EXIT
+	trap 'rm -f "$CAN_PIDF"; exit 0' INT TERM
 	if [ -f "$CAN_LOG" ] && [ "$(wc -c < "$CAN_LOG" 2>/dev/null)" -gt 204800 ]; then
 		tail -c 30720 "$CAN_LOG" > "$CAN_LOG.tmp" 2>/dev/null
 		echo "$(date '+%Y-%m-%d %H:%M:%S') — (старые записи обрезаны, лог превысил 200 КБ)" >> "$CAN_LOG.tmp"
@@ -965,7 +971,7 @@ canary_stop() {
 	touch /tmp/tspu_can.stop 2>/dev/null
 	pkill -f '[t]spu-test _canary' 2>/dev/null
 	hs_kill_runners "_canary"
-	if can_alive; then kill "$(cat "$CAN_PIDF")" 2>/dev/null; rm -f "$CAN_PIDF"; fi
+	if can_alive; then kill -9 "$(cat "$CAN_PIDF")" 2>/dev/null; rm -f "$CAN_PIDF"; fi
 	echo "$(date '+%Y-%m-%d %H:%M:%S') — канарейка остановлена" >> "$CAN_LOG"
 	echo "Канарейка остановлена."
 }

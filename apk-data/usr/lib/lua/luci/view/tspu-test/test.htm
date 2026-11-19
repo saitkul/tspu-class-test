@@ -171,6 +171,7 @@
 						<option value="ipv4" selected="selected">Источник: IPv4</option>
 						<option value="ipv6">Источник: IPv6</option>
 					</select>
+					<select id="tspu_gen_dom" class="cbi-input-select" style="width:auto; margin:.3em .5em 0 0" onchange="tspuRegen()" title="Какой домен из отчёта генерировать (для мульти-доменных прогонов: сайт + узел googlevideo)"></select>
 					<button class="btn cbi-button cbi-button-neutral" onclick="tspuGenFetch()">Вставить отчёт последнего теста</button>
 					<button class="btn cbi-button cbi-button-apply" onclick="tspuGenerate()">Сгенерировать стратегии</button>
 					<button class="btn cbi-button cbi-button-neutral" onclick="tspuGenClear()">Очистить</button>
@@ -870,6 +871,30 @@
 			return { base: base, alts: alts, cls: '', reco: {}, stable: {}, working: {} };
 		}
 		var lines = clean.split('\n');
+		/* Мульти-доменный отчёт: сегменты по «=== ДОМЕН N из M: X ===» и «=== ИТОГ (домен: X,».
+		   Оставляем только сегмент выбранного домена - иначе вердикты и строки
+		   разных доменов смешиваются в химеру (фидбек владельца 2.4). */
+		var domList = [], zi;
+		for (zi = 0; zi < lines.length; zi++) {
+			var mh1 = lines[zi].match(/^=== ДОМЕН \d+ из \d+: (\S+) ===/);
+			var mh2 = lines[zi].match(/^=== ИТОГ \(домен: ([^,]+),/);
+			var dn = mh1 ? mh1[1] : (mh2 ? mh2[1] : null);
+			if (dn && domList.indexOf(dn) < 0) domList.push(dn);
+		}
+		window.tspuGenDomainUsed = '';
+		if (domList.length >= 1) {
+			var wantDom = (window.tspuGenDomain && domList.indexOf(window.tspuGenDomain) >= 0) ? window.tspuGenDomain : domList[0];
+			window.tspuGenDomainUsed = wantDom;
+			var flt = [], curD = null;
+			for (zi = 0; zi < lines.length; zi++) {
+				var lz = lines[zi];
+				var mh1 = lz.match(/^=== ДОМЕН \d+ из \d+: (\S+) ===/);
+				var mh2 = lz.match(/^=== ИТОГ \(домен: ([^,]+),/);
+				if (mh1 || mh2) { curD = mh1 ? mh1[1] : mh2[1]; continue; }
+				if (curD === null || curD === wantDom) flt.push(lz);
+			}
+			if (flt.length) { clean = flt.join('\n'); lines = flt; }
+		}
 		/* IPv6 (2.4): в отчёте с IPv6-пробой блоки размечены маркерами
 		   «=== РЕЗУЛЬТАТЫ IPv4 ===» / «=== РЕЗУЛЬТАТЫ IPv6 ===».
 		   Селектор «Источник» выбирает, какой блок парсить; по умолчанию IPv4. */
@@ -1077,6 +1102,32 @@
 			elGenStatus.textContent = 'Вставьте отчёт — или нажмите «Вставить отчёт последнего теста»';
 			return;
 		}
+		/* Домен отчёта: детект в вставке («=== ДОМЕН N из M: X ===» / «=== ИТОГ (домен: X,»),
+		   селектор заполняется найденными доменами, выбор сохраняется между вставками. */
+		var domList = [];
+		var rl = raw.split('\n');
+		for (var di = 0; di < rl.length; di++) {
+			var m1 = rl[di].match(/^=== ДОМЕН \d+ из \d+: (\S+) ===/);
+			var m2 = rl[di].match(/^=== ИТОГ \(домен: ([^,]+),/);
+			var dn = m1 ? m1[1] : (m2 ? m2[1] : null);
+			if (dn && domList.indexOf(dn) < 0) domList.push(dn);
+		}
+		var domSel = document.getElementById('tspu_gen_dom');
+		if (domSel) {
+			var prevD = domSel.value;
+			if (domList.length >= 1 && domList.indexOf(prevD) < 0) prevD = domList[0];
+			domSel.innerHTML = '';
+			for (var di2 = 0; di2 < domList.length; di2++) {
+				var o2 = document.createElement('option');
+				o2.value = domList[di2];
+				o2.textContent = 'Домен: ' + domList[di2];
+				domSel.appendChild(o2);
+			}
+			domSel.style.display = domList.length > 1 ? '' : 'none';
+			if (prevD) domSel.value = prevD;
+		}
+		window.tspuGenDomain = domSel && domSel.value ? domSel.value : '';
+
 		/* Источник — явный выбор пользователя. Если выбран IPv6, а в отчёте
 		   нет v6-данных — ЧЕСТНЫЙ отказ: предупреждение вместо стратегий. */
 		var hasV6 = raw.indexOf('=== РЕЗУЛЬТАТЫ IPv6 ===') >= 0 ||
@@ -1120,6 +1171,7 @@
 			if (parsed.flap && (parsed.flap.tls12 || parsed.flap.tls13)) {
 				var tf = ['=== ГОТОВЫЕ СТРАТЕГИИ ДЛЯ ZAPRET2 ===',
 					'Источник данных: ' + (window.tspuGenIpSource === 'ipv6' ? 'IPv6' : 'IPv4') + (hasV6 ? '' : ' (в отчёте нет v6-блока)'),
+					'Домен отчёта: ' + (window.tspuGenDomainUsed || '—'),
 					'Рабочих строк в отчёте нет, но профиль флапающий (данные идут, но не успевают).',
 					'На таком профиле основной — универсальная лестница (проверена целиком на живых профилях):',
 					''];
@@ -1389,6 +1441,7 @@
 		o.push('=== ГОТОВЫЕ СТРАТЕГИИ ДЛЯ ZAPRET2 ===');
 		o.push('Источник данных: ' + (window.tspuGenIpSource === 'ipv6' ? 'IPv6' : 'IPv4') +
 			(hasV6 ? '' : ' (в отчёте нет v6-блока)'));
+		o.push('Домен отчёта: ' + (window.tspuGenDomainUsed || '—'));
 		var cls12v = parsed.clsMap ? parsed.clsMap['TLS 1.2'] : null;
 		var cls13v = parsed.clsMap ? parsed.clsMap['TLS 1.3'] : null;
 		if (cls12v && cls13v) {

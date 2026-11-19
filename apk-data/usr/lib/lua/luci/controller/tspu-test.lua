@@ -39,6 +39,8 @@ function index()
 		call("action_prodstatus")).leaf = true
 	entry({"admin", "services", "tspu-test", "prodlog"},
 		call("action_prodlog")).leaf = true
+	entry({"admin", "services", "tspu-test", "prodclear"},
+		call("action_prodclear")).leaf = true
 	-- Валидатор
 	entry({"admin", "services", "tspu-test", "valstart"},
 		call("action_valstart")).leaf = true
@@ -48,6 +50,10 @@ function index()
 		call("action_valstatus")).leaf = true
 	entry({"admin", "services", "tspu-test", "vallog"},
 		call("action_vallog")).leaf = true
+	entry({"admin", "services", "tspu-test", "valclear"},
+		call("action_valclear")).leaf = true
+	entry({"admin", "services", "tspu-test", "valreport"},
+		call("action_valreport")).leaf = true
 	-- Канарейка
 	entry({"admin", "services", "tspu-test", "canarystart"},
 		call("action_canarystart")).leaf = true
@@ -63,16 +69,9 @@ function index()
 	entry({"admin", "services", "tspu-test", "ech"},
 		call("action_ech")).leaf = true
 
-	-- Отдельные вкладки (пункты меню LuCI)
-	local pp = entry({"admin", "services", "tspu-prod"},
-		template("tspu-test/prod"), _("TSPU test - Прод-проба"), 66)
-	pp.dependent = false
-	local pv = entry({"admin", "services", "tspu-val"},
-		template("tspu-test/validator"), _("TSPU test - Валидатор"), 67)
-	pv.dependent = false
-	local pc = entry({"admin", "services", "tspu-canary"},
-		template("tspu-test/canary"), _("TSPU test - Канарейка"), 68)
-	pc.dependent = false
+	-- Канарейка: очистка лога
+	entry({"admin", "services", "tspu-test", "canaryclear"},
+		call("action_canaryclear")).leaf = true
 end
 
 local function _dom_ok(dom)
@@ -108,6 +107,11 @@ end
 function action_prodlog()
 	luci.http.prepare_content("text/plain; charset=utf-8")
 	luci.http.write(luci.sys.exec("/usr/bin/tspu-test prod log 2>&1"))
+end
+
+function action_prodclear()
+	luci.http.prepare_content("text/plain; charset=utf-8")
+	luci.http.write(luci.sys.exec("/usr/bin/tspu-test prod clear 2>&1"))
 end
 
 -- ===== Валидатор =====
@@ -150,6 +154,16 @@ function action_vallog()
 	luci.http.write(luci.sys.exec("/usr/bin/tspu-test validate log 2>&1"))
 end
 
+function action_valclear()
+	luci.http.prepare_content("text/plain; charset=utf-8")
+	luci.http.write(luci.sys.exec("/usr/bin/tspu-test validate clear 2>&1"))
+end
+
+function action_valreport()
+	luci.http.prepare_content("text/plain; charset=utf-8")
+	luci.http.write(luci.sys.exec("/usr/bin/tspu-test validate report 2>&1"))
+end
+
 -- ===== Канарейка =====
 function action_canarystart()
 	local http = luci.http
@@ -184,6 +198,11 @@ end
 function action_profiles()
 	luci.http.prepare_content("text/plain; charset=utf-8")
 	luci.http.write(luci.sys.exec("/usr/bin/tspu-test profiles 2>&1"))
+end
+
+function action_canaryclear()
+	luci.http.prepare_content("text/plain; charset=utf-8")
+	luci.http.write(luci.sys.exec("/usr/bin/tspu-test canary clear 2>&1"))
 end
 
 -- ===== ECH-проба =====
@@ -260,12 +279,19 @@ end
 function action_start()
 	local http = luci.http
 	local dom = tostring(http.formvalue("domain") or "")
-	-- Невалидный домен — ошибка пользователю, а не молчаливая подмена
-	if not dom:match("^[%w%.%-]+$") or dom:match("^%-") then
+	-- Несколько доменов через пробел: проверяем каждый по отдельности
+	-- (невалидный домен — ошибка пользователю, а не молчаливая подмена)
+	local parts, ok = {}, true
+	for w in dom:gmatch("%S+") do
+		if not w:match("^[%w%.%-]+$") or w:match("^%-") then ok = false; break end
+		parts[#parts + 1] = w
+	end
+	if not ok or #parts == 0 then
 		http.prepare_content("text/plain; charset=utf-8")
 		http.write("state=error msg=invalid domain (use letters, digits, dots, dashes)")
 		return
 	end
+	dom = table.concat(parts, " ")
 	local rep = arg_clean(http.formvalue("repeats"), "^%d+$", "3")
 	local tmo = arg_clean(http.formvalue("wait"), "^%d+%.?%d*$", "2.5")
 	-- IPv6-проба: 4-й аргумент CLI "ipv6" - прогон дополнительно по IPv6

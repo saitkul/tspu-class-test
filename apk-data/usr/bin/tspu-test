@@ -689,7 +689,10 @@ PWRAP
 #  проба меряет скорость появления отказов по 10-секундным окнам.
 # ============================================================
 # Убийца раннеров по /proc-скану: работает независимо от того, какой версией
-# приложения процесс был запущен (PID-файлы переживают переустановки)
+# приложения процесс был запущен (PID-файлы переживают переустановки).
+# ВАЖНО: паттерн = ОТДЕЛЬНЫЙ аргумент (_canary), без пробелов - /proc/PID/cmdline
+# хранит аргументы NUL-разделёнными строками, "tspu-test _canary" с пробелом
+# физически не матчится (фидбек 2.5: канарейка пережила stop из-за этого)
 hs_kill_runners() {
 	for p in /proc/[0-9]*/cmdline; do
 		grep -qa "$1" "$p" 2>/dev/null || continue
@@ -707,8 +710,9 @@ PROD_RUNLOG=/tmp/tspu_prod_run.log
 prod_alive() { [ -f "$PROD_PIDF" ] && kill -0 "$(cat "$PROD_PIDF" 2>/dev/null)" 2>/dev/null; }
 
 prod_stop() {
+	touch /tmp/tspu_prod.stop 2>/dev/null
 	pkill -f '[t]spu-test _prod' 2>/dev/null
-	hs_kill_runners "tspu-test _prod"
+	hs_kill_runners "_prod"
 	if prod_alive; then kill "$(cat "$PROD_PIDF")" 2>/dev/null; rm -f "$PROD_PIDF"; fi
 	echo "Прод-проба остановлена."
 }
@@ -731,6 +735,7 @@ _prod() {
 	T0=$(date +%s); TE=$((T0 + DUR)); N_OK=0; N_FAIL=0; TFAIL=""
 	echo "Прод-проба: ${DUR}с, домен $DOM, $MODE" | tee -a "$PROD_LOG"
 	while [ "$(date +%s)" -lt "$TE" ]; do
+		[ -f /tmp/tspu_prod.stop ] && { rm -f "$PROD_PIDF"; echo "state=stopped" > "$PROD_STATUS"; exit 0; }
 		R=$(curl -s -o /dev/null --max-time 5 -w "%{http_code}|%{time_total}" "https://$DOM/generate_204" 2>/dev/null)
 		CODE=${R%%|*}; TT=${R##*|}
 		TS=$(date +%s)
@@ -776,8 +781,9 @@ do_prod_start() {
 	[ "$DUR" -lt 10 ] && DUR=10
 	[ "$DUR" -gt 300 ] && DUR=300
 	# Рестарт-семантика: гасим старые прод-пробы и запускаем с текущими параметрами
+	rm -f /tmp/tspu_prod.stop
 	pkill -f '[t]spu-test _prod' 2>/dev/null
-	hs_kill_runners "tspu-test _prod"
+	hs_kill_runners "_prod"
 	command -v curl >/dev/null 2>&1 || { echo "state=error msg=curl not found"; exit 1; }
 	echo "state=starting" > "$PROD_STATUS"
 	/bin/sh -c "/usr/bin/tspu-test _prod \"$DOM\" \"$DUR\" > $PROD_RUNLOG 2>&1 &"
@@ -800,7 +806,7 @@ val_alive() { [ -f "$VAL_PIDF" ] && kill -0 "$(cat "$VAL_PIDF" 2>/dev/null)" 2>/
 
 val_stop() {
 	pkill -f '[t]spu-test _validate' 2>/dev/null
-	hs_kill_runners "tspu-test _validate"
+	hs_kill_runners "_validate"
 	if val_alive; then kill "$(cat "$VAL_PIDF")" 2>/dev/null; rm -f "$VAL_PIDF"; fi
 	/etc/init.d/zapret2 start >/dev/null 2>&1
 	echo "Валидация остановлена."
@@ -926,7 +932,12 @@ _canary() {
 			echo "$(date '+%Y-%m-%d %H:%M:%S') — пропуск: Zapret2 не запущен" >> "$CAN_LOG"
 		fi
 		echo "last=$(date '+%Y-%m-%d %H:%M:%S') dom=$DOM" >> "$CAN_STATUS"
-		sleep "$IV"
+		slept=0
+		while [ $slept -lt $IV ]; do
+			[ -f /tmp/tspu_can.stop ] && { rm -f "$CAN_PIDF"; exit 0; }
+			sleep 1
+			slept=$((slept+1))
+		done
 	done
 }
 
@@ -939,9 +950,10 @@ do_canary_start() {
 	[ "$IV" -lt 60 ] && IV=60
 	[ "$IV" -gt 3600 ] && IV=3600
 	# Рестарт-семантика: гасим ЛЮБЫЕ старые канарейки (в т.ч. от прошлых версий)
-	# и запускаем с текущими параметрами
+	# и запускаем с текущими параметрами; стоп-флаг снимается
+	rm -f /tmp/tspu_can.stop
 	pkill -f '[t]spu-test _canary' 2>/dev/null
-	hs_kill_runners "tspu-test _canary"
+	hs_kill_runners "_canary"
 	command -v curl >/dev/null 2>&1 || { echo "state=error msg=curl not found"; exit 1; }
 	echo "state=starting" > "$CAN_STATUS"
 	/bin/sh -c "/usr/bin/tspu-test _canary \"$DOM\" \"$IV\" > /tmp/tspu_can_run.log 2>&1 &"
@@ -950,8 +962,9 @@ do_canary_start() {
 }
 
 canary_stop() {
+	touch /tmp/tspu_can.stop 2>/dev/null
 	pkill -f '[t]spu-test _canary' 2>/dev/null
-	hs_kill_runners "tspu-test _canary"
+	hs_kill_runners "_canary"
 	if can_alive; then kill "$(cat "$CAN_PIDF")" 2>/dev/null; rm -f "$CAN_PIDF"; fi
 	echo "$(date '+%Y-%m-%d %H:%M:%S') — канарейка остановлена" >> "$CAN_LOG"
 	echo "Канарейка остановлена."

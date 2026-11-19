@@ -499,9 +499,11 @@ AWK
 			echo "state=running progress=$DONE/$TOTAL elapsed=$EL domain=$CURDOM (проверка адаптивности)" > "$STATUS"
 			RT_OK=""; RT_FAIL=""
 			for CN in $CHAMP; do
-				A=$(sed -n "${CN}p" "$NORM")
+				# ВАЖНО: не $A - эта переменная хранит путь к awk-программе парсера,
+				# затирание ломало парс СЛЕДУЮЩЕГО домена (awk -f <стратегия>)
+				RA=$(sed -n "${CN}p" "$NORM")
 				# чемпион прошедшим считаетcя только если ОБЕ версии TLS пережили повтор
-				NAV=$(grep -A1 -F -- "nfqws2 $A" "$MDLF" 2>/dev/null | grep -c "!!!!! AVAILABLE")
+				NAV=$(awk -v pat="nfqws2 $RA" 'index($0, pat) > 0 { f=1; next } /^- curl_test/ { f=0 } f && /!!!!! AVAILABLE !!!!!/ { c++ } END { print c+0 }' "$MDLF" 2>/dev/null)
 				if [ "$NAV" -ge 2 ]; then
 					RT_OK="$RT_OK $CN"
 				else
@@ -517,10 +519,10 @@ AWK
 			echo "соединения независимо от механики, и в проде видео будет умирать через 5-15 с."
 			echo "=== ПРОВЕРКА АДАПТИВНОСТИ ТСПУ (re-test рекомендованных строк: $CHAMP) ===" >> $RFULL
 			for CN in $CHAMP; do
-				A=$(sed -n "${CN}p" "$NORM")
-				NAV=$(grep -A1 -F -- "nfqws2 $A" "$MDLF" 2>/dev/null | grep -c "!!!!! AVAILABLE")
-				echo "Строка $CN (чемпион): $A"
-				echo "Строка $CN: $A" >> $RFULL
+				RA=$(sed -n "${CN}p" "$NORM")
+				NAV=$(awk -v pat="nfqws2 $RA" 'index($0, pat) > 0 { f=1; next } /^- curl_test/ { f=0 } f && /!!!!! AVAILABLE !!!!!/ { c++ } END { print c+0 }' "$MDLF" 2>/dev/null)
+				echo "Строка $CN (чемпион): $RA"
+				echo "Строка $CN: $RA" >> $RFULL
 				if [ "$NAV" -ge 2 ]; then
 					echo "   Результат мгновенного повтора: ПРОШЛА (обе версии TLS)"
 					echo "   Результат: ПРОШЛА мгновенный повтор" >> $RFULL

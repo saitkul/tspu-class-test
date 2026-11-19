@@ -119,7 +119,7 @@ do_run() {
 	A=$AWKF
 	L=/tmp/class_test.log
 	RFULL=/tmp/class_report.txt
-	SCRIPT_VER="TSPU test @APP_VERSION@ (ядро tspu-class-test v2.7): 31 стратегия, IPv6-проба, проверка адаптивности, SCANLEVEL=force"
+	SCRIPT_VER="TSPU test @APP_VERSION@ (ядро tspu-class-test v2.8): 34 стратегии, IPv6-проба, проверка адаптивности, SCANLEVEL=force"
 
 	echo $$ > "$PIDF"
 
@@ -244,6 +244,7 @@ END {
     }
     else if (cb != "") V[p] = "L2: нарезка проходит только вместе с фейком (строки" cb ")"
     else if (fk != "") V[p] = "особый: ТСПУ верит голому фейку (строки" fk "), но режет нарезку"
+    else if (index(st " ", " 32 ") > 0 || index(st " ", " 33 ") > 0 || index(st " ", " 34 ") > 0) V[p] = "особый: прошли только новые механики (32-34: клон-фейк, send-эхо) - корпусная классификация для них не определена"
     else V[p] = "особый: прошла только строка 3 (разрез на границе SLD) - используйте pos=sld"
     nt = ""
     if (fk != "") nt = nt "Строки" fk ": ТСПУ ВЕРИТ фейковому ClientHello (решение принимается по фейку), сервер отбрасывает фейк по фулингу. "
@@ -263,6 +264,11 @@ END {
     nsd = ""
     for (kn = 24; kn <= 31; kn++) if (index(st " ", " " kn " ") > 0) nsd = nsd " " kn
     if (nsd != "") nt = nt "Шумовая серия дробилки (строки" nsd ") прошла: дозы и позиции badsum-примесей отработали - персональная дробилка соберётся из ваших данных. "
+    cl = ""
+    if (index(st " ", " 32 ") > 0) cl = cl " 32"
+    if (index(st " ", " 33 ") > 0) cl = cl " 33"
+    if (cl != "") nt = nt "Клон-фейк (строки" cl ") прошёл: фейк с КЛОНИРОВАННЫМ ClientHello клиента не отсекается по содержимому - сильный фулинг там, где голый и стандартный фейк детектируются. "
+    if (index(st " ", " 34 ") > 0) nt = nt "Send-эхо (строка 34) прошла: неизменённые копии hello дошли до сервера, а мёртвые сегменты стали шумом для DPI. "
     if (st == "" && fl == "" && sl == "") nt = nt "Ни одна строка не прошла. Если первый прогон этого домена был зелёным, а живой поток умирал через 5-15 с - ТСПУ АДАПТИВНЫЙ: он разогрет реальным трафиком и режет соединения с узлом независимо от стратегии. Подождите 5-10 минут (охлаждение) и повторите - зелёный результат может вернуться. "
     NT[p] = nt
     # РЕКОМЕНДАЦИЯ: одна минимально достаточная строка по классу
@@ -492,7 +498,34 @@ AWK
 			grep -vE '^[[:space:]]*(#|$)' "$S" > "$NORM"
 			: > "$MINI"
 			for CN in $CHAMP; do sed -n "${CN}p" "$NORM" >> "$MINI"; done
-			BATCH=1 SCANLEVEL=force TEST=custom LIST_HTTPS_TLS12=$MINI LIST_HTTPS_TLS13=$MINI DOMAINS="$CURDOM" IPVS=$IP0 ENABLE_HTTP=0 ENABLE_HTTPS_TLS12=1 ENABLE_HTTPS_TLS13=1 ENABLE_HTTP3=0 REPEATS=1 CURL_HTTPS_GET=1 CURL_MAX_TIME="$TMO" ./blockcheck2.sh > "$MDLF" 2>&1
+			# curl-проба HS-стиль (min_bytes-критерий): обёртка пишет метрики
+			# каждой попытки (версия/код/байт/время) - контроль данных после рукопожатия
+			CURLW=/tmp/tspu_curl_probe
+			MF=/tmp/tspu_curl_metrics.d$DOMNUM
+			cat > "$CURLW" <<'PWRAP'
+#!/bin/sh
+real_curl=/usr/bin/curl
+out=$("$real_curl" "$@" --write-out '\nTSPU|%{http_code}|%{size_download}|%{time_total}' 2>/dev/null)
+code=$?
+line=$(printf '%s\n' "$out" | grep '^TSPU|' | tail -n 1)
+if [ -n "$line" ]; then
+	rest=${line#TSPU|}; c2=${rest%%|*}; rest=${rest#*|}; b=${rest%%|*}; rest=${rest#*|}; t=${rest##*|}
+	ver=
+	url=
+	for a in "$@"; do
+		case "$a" in --tlsv1.2) ver=1.2 ;; --tlsv1.3) ver=1.3 ;; https://*) url=$a ;; esac
+	done
+	[ -n "$url" ] && printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date '+%H:%M:%S')" "${ver:-?}" "$c2" "$b" "$t" "$url" >> "$TSPU_CURL_METRICS"
+	printf '%s' "$t"
+	exit $code
+fi
+printf '%s' "$out"
+exit $code
+PWRAP
+			chmod +x "$CURLW"
+			: > "$MF"
+			export TSPU_CURL_METRICS="$MF"
+			BATCH=1 SCANLEVEL=force TEST=custom LIST_HTTPS_TLS12=$MINI LIST_HTTPS_TLS13=$MINI DOMAINS="$CURDOM" IPVS=$IP0 ENABLE_HTTP=0 ENABLE_HTTPS_TLS12=1 ENABLE_HTTPS_TLS13=1 ENABLE_HTTP3=0 REPEATS=1 CURL_HTTPS_GET=1 CURL_MAX_TIME="$TMO" CURL="$CURLW" ./blockcheck2.sh > "$MDLF" 2>&1
 			cat "$MDLF" >> $L
 			# Статус для LuCI: прогресс заморожен на время мини-прогона - поясняем почему
 			EL=$(( $(date +%s) - T0 ))
@@ -531,6 +564,24 @@ AWK
 					echo "   Результат: НЕ ПРОШЛА повтор (умерла)" >> $RFULL
 				fi
 			done
+			# Контроль данных (HS-критерий): сколько байт качнули GET-пробы чемпиона
+			DSTAT=$(awk -F '\t' -v u="$CURDOM" '$6 ~ u && $4+0 > 0 { n++; if (mn == "" || $4+0 < mn) mn = $4+0; if ($4+0 > mx) mx = $4+0 } END { printf "%d %d %d", n+0, mn+0, mx+0 }' "$MF" 2>/dev/null)
+			DN=$(echo $DSTAT | cut -d ' ' -f 1); DMIN=$(echo $DSTAT | cut -d ' ' -f 2); DMAX=$(echo $DSTAT | cut -d ' ' -f 3)
+			echo "Контроль данных (GET через чемпионскую стратегию): попыток ${DN:-0}, байт за попытку: ${DMIN:-0}-${DMAX:-0}."
+			echo "Контроль данных: попыток ${DN:-0}, байт за попытку ${DMIN:-0}-${DMAX:-0}." >> $RFULL
+			if [ "${DMAX:-0}" -ge 65536 ]; then
+				echo "   Данные идут: HS-порог 64 КБ пройден."
+				echo "   Данные идут: HS-порог 64 КБ пройден." >> $RFULL
+			elif [ "${DMAX:-0}" -ge 32768 ]; then
+				echo "   Данные идут, но ниже HS-порога 64 КБ - при мёртвых данных в проде это признак insufficient_data."
+				echo "   Данные идут, но ниже HS-порога 64 КБ." >> $RFULL
+			elif [ "${DN:-0}" -ge 1 ]; then
+				echo "   ВНИМАНИЕ: максимум ${DMAX:-0} байт за попытку - данные после рукопожатия почти не идут (HS-критерий insufficient_data)."
+				echo "   ВНИМАНИЕ: максимум ${DMAX:-0} байт за попытку - данные после рукопожатия почти не идут." >> $RFULL
+			else
+				echo "   Контроль данных: GET-проб не зафиксировано."
+				echo "   Контроль данных: GET-проб нет." >> $RFULL
+			fi
 			if [ -n "$RT_FAIL" ]; then
 				echo "ВЕРДИКТ: ТСПУ АДАПТИВНЫЙ - рекомендованная стратегия прошла в скане и умерла при повторе."
 				echo "В проде ожидайте деградацию: длинные потоки (видео) режутся через 5-15 с даже при зелёном скане."
@@ -553,7 +604,7 @@ AWK
 			fi
 		fi
 		# RLF-файлы fam-отчётов больше не нужны (чемпионы собраны)
-		rm -f /tmp/class_report.d$DOMNUM.ipv* /tmp/class_minilist.d$DOMNUM /tmp/class_normlist.d$DOMNUM 2>/dev/null
+		rm -f /tmp/class_report.d$DOMNUM.ipv* /tmp/class_minilist.d$DOMNUM /tmp/class_normlist.d$DOMNUM /tmp/tspu_curl_probe /tmp/tspu_curl_metrics.d$DOMNUM 2>/dev/null
 	done
 
 	# По завершении теста убрать служебные строки запуска из вывода.
@@ -923,6 +974,11 @@ make_list() {
 # --- 30-31: шум-проба тяжёлой дозы без шреда (изолирует вклад примесей) ---
 --payload=tls_client_hello --lua-desync=multisplit:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=6
 --payload=tls_client_hello --lua-desync=multidisorder:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=6
+# --- 32-33: клон-фейк (HS-идея): фейк с КЛОНИРОВАННЫМ ClientHello клиента ---
+--payload=tls_client_hello --lua-desync=tls_client_hello_clone:blob=hs32 --lua-desync=fake:blob=hs32:tcp_md5:repeats=6
+--payload=tls_client_hello --lua-desync=tls_client_hello_clone:blob=hs33 --lua-desync=fake:blob=hs33:tcp_md5:repeats=6 --lua-desync=multidisorder:pos=midsld
+# --- 34: send-эхо (HS-приём): неизменённые копии hello - серверу данные, DPI шум ---
+--payload=tls_client_hello --lua-desync=send:repeats=2 --lua-desync=multidisorder:pos=midsld
 EOF
 }
 

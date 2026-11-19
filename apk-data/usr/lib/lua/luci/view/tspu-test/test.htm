@@ -52,7 +52,7 @@
 		</div>
 		<div id="tspu_tab_test">
 		<div class="cbi-value">
-			<label class="cbi-value-title" for="tspu_domain">Домены для теста (несколько — через пробел; у каждого свой вердикт)</label>
+			<label class="cbi-value-title" for="tspu_domain">Домен для теста (за один прогон — один домен)</label>
 			<div class="cbi-value-field">
 				<input id="tspu_domain" type="text" class="cbi-input-text" style="width:100%; max-width:420px" value="www.youtube.com" />
 				<details style="margin-top:.3em; color:#999">
@@ -593,18 +593,18 @@
 	}
 
 	window.tspuStart = function () {
-		/* Очистка доменов: https://, пути, порты и прочий хвост убираются.
-		   Несколько доменов - через пробел: прогонятся очередью, у каждого свой вердикт. */
+		/* Очистка домена: https://, пути, порты и прочий хвост убираются.
+		   За один прогон — один домен: каждый сайт/узел сканируется отдельно. */
 		var doms = tspuCleanDomain(elDomain.value);
 		if (!doms.length) {
 			elStatus.textContent = 'Введите домен, например www.youtube.com';
 			return;
 		}
 		if (doms.length > 1) {
-			elStatus.textContent = 'Будет проверено доменов: ' + doms.length + ' (по очереди, у каждого свой вердикт)';
+			elStatus.textContent = 'За один прогон — один домен: взят ' + doms[0];
 		}
-		elDomain.value = doms.join(' ');
-		var url = U_START + '?domain=' + encodeURIComponent(doms.join(' ')) +
+		elDomain.value = doms[0];
+		var url = U_START + '?domain=' + encodeURIComponent(elDomain.value) +
 			'&repeats=' + encodeURIComponent(elRep.value) +
 			'&wait=' + encodeURIComponent(elWait.value) +
 			'&ipv6=' + (function () { var e = document.getElementById('tspu_ipv6'); return e && e.checked ? '1' : '0'; })();

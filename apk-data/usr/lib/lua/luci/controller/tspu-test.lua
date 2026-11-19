@@ -279,19 +279,12 @@ end
 function action_start()
 	local http = luci.http
 	local dom = tostring(http.formvalue("domain") or "")
-	-- Несколько доменов через пробел: проверяем каждый по отдельности
-	-- (невалидный домен — ошибка пользователю, а не молчаливая подмена)
-	local parts, ok = {}, true
-	for w in dom:gmatch("%S+") do
-		if not w:match("^[%w%.%-]+$") or w:match("^%-") then ok = false; break end
-		parts[#parts + 1] = w
-	end
-	if not ok or #parts == 0 then
+	-- Невалидный домен — ошибка пользователю, а не молчаливая подмена
+	if not dom:match("^[%w%.%-]+$") or dom:match("^%-") then
 		http.prepare_content("text/plain; charset=utf-8")
 		http.write("state=error msg=invalid domain (use letters, digits, dots, dashes)")
 		return
 	end
-	dom = table.concat(parts, " ")
 	local rep = arg_clean(http.formvalue("repeats"), "^%d+$", "3")
 	local tmo = arg_clean(http.formvalue("wait"), "^%d+%.?%d*$", "2.5")
 	-- IPv6-проба: 4-й аргумент CLI "ipv6" - прогон дополнительно по IPv6

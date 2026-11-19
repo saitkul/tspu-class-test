@@ -38,7 +38,7 @@
 	<h2 class="tspu-h1">TSPU test</h2>
 	<div class="tspu-subtitle">Класс-тест ТСПУ провайдера<span id="tspu_title_ver"></span></div>
 	<div class="cbi-map-descr">
-		<p>Определяет, какие механики десинхронизации пропускает ТСПУ вашего провайдера: 31 стратегия (нарезка / голый фейк / комбинации / двухпакетный hello / шумовая серия дробилки) на TLS 1.2 и TLS 1.3 в режиме SCANLEVEL=force. Вкладка «Тест» печатает вердикт «КЛАСС ТСПУ» и рекомендацию; «Генератор стратегий» превращает отчёт в готовые строки; «Прод-проба» меряет деградацию повторных соединений при живом Zapret2 и ECH в DNS; «Валидатор» проверяет чужие стратегии на вашем ТСПУ; «Канарейка» фоново контролирует живость текущей стратегии.</p>
+		<p>Определяет, какие механики десинхронизации пропускает ТСПУ вашего провайдера: 31 стратегия (нарезка / голый фейк / комбинации / двухпакетный hello / шумовая серия дробилки) на TLS 1.2 и TLS 1.3 в режиме SCANLEVEL=force. Вкладка «Тест» печатает вердикт «КЛАСС ТСПУ» и рекомендацию (можно несколько доменов разом — например, сайт и его узел googlevideo); «Генератор стратегий» превращает отчёт в готовые строки; «Прод-проба» меряет деградацию повторных соединений при живом Zapret2 и ECH в DNS; «Валидатор» проверяет чужие стратегии на вашем ТСПУ; «Канарейка» фоново контролирует живость текущей стратегии.</p>
 		<p class="tspu-note-italic">На время теста служба Zapret2 останавливается и запускается обратно по завершении. Финальную проверку стратегии всегда делайте в браузере в режиме Инкогнито.</p>
 	</div>
 
@@ -52,7 +52,7 @@
 		</div>
 		<div id="tspu_tab_test">
 		<div class="cbi-value">
-			<label class="cbi-value-title" for="tspu_domain">Домен для теста (за один прогон — один домен)</label>
+			<label class="cbi-value-title" for="tspu_domain">Домены для теста (несколько — через пробел: сайт и его узел googlevideo в одном отчёте)</label>
 			<div class="cbi-value-field">
 				<input id="tspu_domain" type="text" class="cbi-input-text" style="width:100%; max-width:420px" value="www.youtube.com" />
 				<details style="margin-top:.3em; color:#999">
@@ -593,18 +593,19 @@
 	}
 
 	window.tspuStart = function () {
-		/* Очистка домена: https://, пути, порты и прочий хвост убираются.
-		   За один прогон — один домен: каждый сайт/узел сканируется отдельно. */
+		/* Очистка доменов: https://, пути, порты и прочий хвост убираются.
+		   Несколько доменов - через пробел (например, сайт и его узел googlevideo):
+		   прогоняются очередью, у каждого свой ИТОГ и вердикт. */
 		var doms = tspuCleanDomain(elDomain.value);
 		if (!doms.length) {
 			elStatus.textContent = 'Введите домен, например www.youtube.com';
 			return;
 		}
 		if (doms.length > 1) {
-			elStatus.textContent = 'За один прогон — один домен: взят ' + doms[0];
+			elStatus.textContent = 'Будет проверено доменов: ' + doms.length + ' (по очереди, у каждого свой вердикт)';
 		}
-		elDomain.value = doms[0];
-		var url = U_START + '?domain=' + encodeURIComponent(elDomain.value) +
+		elDomain.value = doms.join(' ');
+		var url = U_START + '?domain=' + encodeURIComponent(doms.join(' ')) +
 			'&repeats=' + encodeURIComponent(elRep.value) +
 			'&wait=' + encodeURIComponent(elWait.value) +
 			'&ipv6=' + (function () { var e = document.getElementById('tspu_ipv6'); return e && e.checked ? '1' : '0'; })();

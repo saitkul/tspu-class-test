@@ -498,6 +498,24 @@ AWK
 			else
 				awk -v rep="$REP" -v rpt="$RLF" -f $A $S "$DLF"
 				AWKRC=$?
+				# Ошибки nfqws2-функций в логе (ревью 2.5 §5: строки 32-34 давали 0/5 на
+				# мягком узле, где весь корпус 5/5 - это не отклик ТСПУ, а «desync function
+				# 'send'/'tls_client_hello_clone' does not exist»: nfqws2 не запускался,
+				# попытки шли БЕЗ обхода). Показываем как несовместимость, не как провал.
+				MISSF=$(grep -oE "desync function '[^']+' does not exist" "$DLF" 2>/dev/null | sed "s/desync function '//; s/' does not exist//" | sort -u | tr '
+' ' ')
+				if [ -n "$MISSF" ]; then
+					MISP=" $MISSF"
+					ML=""
+					case "$MISP" in *" tls_client_hello_clone "*) ML="$ML 32 33" ;; esac
+					case "$MISP" in *" send "*) ML="$ML 34" ;; esac
+					echo "ВНИМАНИЕ: в lua-скриптах вашей версии zapret2 нет функций:${MISSF}."
+					if [ -n "$ML" ]; then
+						echo "Строки корпуса$ML показаны «не прошла», но это НЕ отклик ТСПУ - nfqws2 не запускался с ними (попытки шли без обхода). Обновите zapret2 до свежей версии."
+						echo "ВНИМАНИЕ: строки корпуса$ML НЕ ПОДДЕРЖИВАЮТСЯ вашей версией zapret2 (в lua нет функций:${MISSF}) - «не прошла» для них означает несовместимость, а не отклик ТСПУ. Обновите zapret2." >> "$RLF"
+					fi
+					echo "Обновите zapret2 до свежей версии (lua-скрипты), после чего повторите тест - эти строки будут проверены честно."
+				fi
 				[ -s "$RLF" ] || echo "Результат: в логе нет строк из списка." > "$RLF"
 				if [ "$DNSFAIL" = 1 ]; then
 					if [ $AWKRC -ne 0 ]; then
@@ -724,11 +742,18 @@ PWRAP
 	echo "nfqws2: ${NV:-неизвестно}"
 	# Проверка circular в lua-файлах zapret2 (полевой кейс: nfqws2 v1.0.7 без circular
 	# печатает «desync function 'circular' does not exist» и соединения идут БЕЗ обхода)
-	CIRHIT=$(find /opt/zapret2 -maxdepth 4 -name '*.lua' 2>/dev/null | xargs grep -l "circular" 2>/dev/null | head -n 1)
+	LUFN=$(find /opt/zapret2 -maxdepth 4 -name '*.lua' 2>/dev/null)
+	CIRHIT=$(echo "$LUFN" | xargs grep -l "circular" 2>/dev/null | head -n 1)
+	CLNHIT=$(echo "$LUFN" | xargs grep -l "tls_client_hello_clone" 2>/dev/null | head -n 1)
 	if [ -n "$CIRHIT" ]; then
 		echo "Lua-функции zapret2: circular: найдена"
 	else
 		echo "Lua-функции zapret2: circular: НЕ НАЙДЕНА (варианты генератора 4-8 с circular не заработают — nfqws2 печатает «desync function 'circular' does not exist» и идёт без обхода; обновите zapret2)"
+	fi
+	if [ -n "$CLNHIT" ]; then
+		echo "Lua-функции zapret2: tls_client_hello_clone: найдена"
+	else
+		echo "Lua-функции zapret2: tls_client_hello_clone: НЕ НАЙДЕНА (строки корпуса 32-33 — клон-фейк — несовместимы с этим nfqws2; обновите zapret2)"
 	fi
 	case "$CURLV" in
 	  *mbedTLS*|*LibreSSL*)

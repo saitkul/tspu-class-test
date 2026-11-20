@@ -1447,7 +1447,7 @@
 		o.push('Домен отчёта: ' + (window.tspuGenDomainUsed || '—'));
 		if (raw && raw.indexOf('circular: НЕ НАЙДЕНА') >= 0) {
 			o.push('ВНИМАНИЕ: в lua-файлах вашей установки zapret2 нет функции circular — варианты 4-8 (circular-оркестратор)');
-			o.push('не заработают с этим nfqws2: он печатает "desync function 'circular' does not exist" и соединения идут БЕЗ обхода.');
+			o.push('не заработают с этим nfqws2: он печатает "desync function circular does not exist" и соединения идут БЕЗ обхода.');
 			o.push('Обновите zapret2 до свежей версии (lua-скрипты), либо используйте варианты 1-3 (без circular).');
 		}
 		var cls12v = parsed.clsMap ? parsed.clsMap['TLS 1.2'] : null;

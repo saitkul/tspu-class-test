@@ -118,6 +118,13 @@ end
 function action_valstart()
 	local http = luci.http
 	local txt = tostring(http.formvalue("text") or "")
+	-- Проверка домена ДО записи файла (ревью 2.5: файл оставался от прошлого ввода)
+	local dom = tostring(http.formvalue("domain") or "")
+	if not _dom_ok(dom) then
+		http.prepare_content("text/plain; charset=utf-8")
+		http.write("state=error msg=invalid domain")
+		return
+	end
 	local f = io.open("/tmp/tspu_validate.txt", "w")
 	if not f then
 		http.prepare_content("text/plain; charset=utf-8")
@@ -126,12 +133,6 @@ function action_valstart()
 	end
 	f:write(txt)
 	f:close()
-	local dom = tostring(http.formvalue("domain") or "")
-	if not _dom_ok(dom) then
-		http.prepare_content("text/plain; charset=utf-8")
-		http.write("state=error msg=invalid domain")
-		return
-	end
 	local rep = tostring(http.formvalue("rep") or "2")
 	rep = rep:gsub("[^%d]", "")
 	if rep == "" then rep = "2" end
@@ -229,15 +230,15 @@ function action_download()
 	local http = luci.http
 	local which = tostring(http.formvalue("which") or "")
 	local spec = LOG_FILES[which]
-	if not spec or not io.open(spec.path, "r") then
+	local h = spec and io.open(spec.path, "r")
+	if not h then
 		http.status(404, "Not Found")
 		http.prepare_content("text/plain; charset=utf-8")
 		http.write("Файл лога не найден. Он создаётся после первого запуска теста.")
 		return
 	end
-	local f = io.open(spec.path, "r")
-	local data = f:read("*a")
-	f:close()
+	local data = h:read("*a")
+	h:close()
 	http.header("Content-Disposition",
 		'attachment; filename="' .. spec.name .. '"')
 	http.prepare_content("text/plain; charset=utf-8")

@@ -722,6 +722,14 @@ PWRAP
 	echo "Домены: $DOM"
 	echo "curl: ${CURLV:-неизвестно}"
 	echo "nfqws2: ${NV:-неизвестно}"
+	# Проверка circular в lua-файлах zapret2 (полевой кейс: nfqws2 v1.0.7 без circular
+	# печатает «desync function 'circular' does not exist» и соединения идут БЕЗ обхода)
+	CIRHIT=$(find /opt/zapret2 -maxdepth 4 -name '*.lua' 2>/dev/null | xargs grep -l "circular" 2>/dev/null | head -n 1)
+	if [ -n "$CIRHIT" ]; then
+		echo "Lua-функции zapret2: circular: найдена"
+	else
+		echo "Lua-функции zapret2: circular: НЕ НАЙДЕНА (варианты генератора 4-8 с circular не заработают — nfqws2 печатает «desync function 'circular' does not exist» и идёт без обхода; обновите zapret2)"
+	fi
 	case "$CURLV" in
 	  *mbedTLS*|*LibreSSL*)
 	    echo "TLS-бэкенд curl без kyber: ClientHello уходит одним пакетом. У браузеров (Chrome/Firefox) hello"
@@ -891,6 +899,13 @@ _val_report() {
 	while IFS= read -r A; do
 		[ -z "$A" ] && continue
 		NALL=$((NALL+1))
+		# Ошибка nfqws2 в блоке стратегии (например, "desync function 'circular' does not
+		# exist" - функции нет в lua-наборе zapret2) = попытки шли БЕЗ обхода
+		VERR=$(awk -v pat="nfqws2 $A" '
+			index($0, pat) > 0 { f = 1; next }
+			/^- / || /^clearing/ { f = 0 }
+			f && /^desync function/ { print $0; exit }
+		' "$VAL_LOG" 2>/dev/null | head -n 1)
 		AVRES=$(awk -v pat="nfqws2 $A" -v rep="$2" '
 			index($0, pat) > 0 { f = 1; v = ($0 ~ /curl_test_https_tls13/) ? "13" : "12"; seen[v] = 1; next }
 			/^- / || /^clearing/ { f = 0 }
@@ -910,6 +925,11 @@ _val_report() {
 		if [ "$S12" = 1 ] && [ "$T12" = 0 ]; then T12=1; [ "${A12:-0}" -ge 1 ] || E12=1; fi
 		if [ "$S13" = 1 ] && [ "$T13" = 0 ]; then T13=1; [ "${A13:-0}" -ge 1 ] || E13=1; fi
 		O12=$((T12 - E12)); O13=$((T13 - E13))
+		if [ -n "$VERR" ]; then
+			V="НЕ ПРОВЕРЕНА: nfqws2 не знает функцию из стратегии (${VERR#desync function }). Обновите zapret2 - в lua-скриптах вашей версии нет этой функции (nfqws2 запускался без обхода)."; NMISS=$((NMISS+1))
+			echo "Стратегия: $V" | tee -a "$VAL_LOG" >> "$VAL_REPORT"
+			continue
+		fi
 		if [ "$S12" = 0 ] && [ "$S13" = 0 ]; then
 			V="НЕ ПРОВЕРЕНА: строки нет в логе blockcheck2 (скан прервался или строка не разобралась)"; NMISS=$((NMISS+1))
 		else

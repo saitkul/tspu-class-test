@@ -129,7 +129,9 @@ do_status() {
 # $1=номер строки $2=стратегия $3=лог мини-скана; CHVER = «N:12 N:13»
 rt_champ_ok() {
 	RES=$(awk -v pat="nfqws2 $2" '
-		index($0, pat) > 0 { f = 1; v = ($0 ~ /curl_test_https_tls13/) ? 13 : 12; next }
+		# ревью 2.6.5: точное совпадение хвоста заголовка, а не index(): иначе стратегия
+		# «A» ловила заголовки более длинных «A:...» (строки 1 и 6, 7 и 11/12 корпуса)
+		/^- curl_test_https_tls1[23] / { t = $0; sub(/^.* : nfqws2 /, "nfqws2 ", t); if (t == pat) { f = 1; v = ($0 ~ /curl_test_https_tls13/) ? 13 : 12; next } }
 		/^- / || /^clearing/ { f = 0 }
 		f && /^!!!!! AVAILABLE !!!!!/ { c[v]++ }
 		END { printf "%d %d", c[12] + 0, c[13] + 0 }' "$3" 2>/dev/null)
@@ -166,7 +168,7 @@ do_run() {
 	A=$AWKF
 	L=/tmp/class_test.log
 	RFULL=/tmp/class_report.txt
-	SCRIPT_VER="TSPU test @APP_VERSION@ (ядро tspu-class-test v2.9): 34 стратегии, IPv6-проба, проверка адаптивности, SCANLEVEL=force"
+	SCRIPT_VER="TSPU test 2.6 (ядро tspu-class-test v2.9): 34 стратегии, IPv6-проба, проверка адаптивности, SCANLEVEL=force"
 
 	echo $$ > "$PIDF"
 
@@ -743,17 +745,20 @@ PWRAP
 	# Проверка circular в lua-файлах zapret2 (полевой кейс: nfqws2 v1.0.7 без circular
 	# печатает «desync function 'circular' does not exist» и соединения идут БЕЗ обхода)
 	LUFN=$(find /opt/zapret2 -maxdepth 4 -name '*.lua' 2>/dev/null)
-	CIRHIT=$(echo "$LUFN" | xargs grep -l "circular" 2>/dev/null | head -n 1)
-	CLNHIT=$(echo "$LUFN" | xargs grep -l "tls_client_hello_clone" 2>/dev/null | head -n 1)
+	# ревью 2.6.5: ищем ОПРЕДЕЛЕНИЕ (^function circular / ^function tls_client_hello_clone),
+	# само слово встречается в комментариях; blockcheck2 сам грузит zapret-lib+antidpi,
+	# circular - в zapret-auto.lua (blockcheck2 не грузит, но валидатор добавляет lua-init)
+	CIRHIT=$(echo "$LUFN" | xargs grep -l "^function circular" 2>/dev/null | head -n 1)
+	CLNHIT=$(echo "$LUFN" | xargs grep -l "^function tls_client_hello_clone" 2>/dev/null | head -n 1)
 	if [ -n "$CIRHIT" ]; then
-		echo "Lua-функции zapret2: circular: найдена"
+		echo "Lua-функции zapret2: circular: найдена (zapret-auto.lua; валидатор грузит его для circular-стратегий)"
 	else
-		echo "Lua-функции zapret2: circular: НЕ НАЙДЕНА (варианты генератора 4-8 с circular не заработают — nfqws2 печатает «desync function 'circular' does not exist» и идёт без обхода; обновите zapret2)"
+		echo "Lua-функции zapret2: circular: НЕ НАЙДЕНА в lua-скриптах (варианты генератора 4-8 с circular на этом nfqws2 не запустятся; валидатор покажет «не знает функцию»)"
 	fi
 	if [ -n "$CLNHIT" ]; then
-		echo "Lua-функции zapret2: tls_client_hello_clone: найдена"
+		echo "Lua-функции zapret2: tls_client_hello_clone: найдена (zapret-antidpi.lua; строки 32-33 тестируются штатно)"
 	else
-		echo "Lua-функции zapret2: tls_client_hello_clone: НЕ НАЙДЕНА (строки корпуса 32-33 — клон-фейк — несовместимы с этим nfqws2; обновите zapret2)"
+		echo "Lua-функции zapret2: tls_client_hello_clone: НЕ НАЙДЕНА в lua-скриптах (строки 32-33 не стартуют на этом nfqws2)"
 	fi
 	case "$CURLV" in
 	  *mbedTLS*|*LibreSSL*)
@@ -874,6 +879,9 @@ do_prod_start() {
 	case "$DUR" in *[!0-9]*) DUR=30 ;; esac
 	[ "$DUR" -lt 10 ] && DUR=10
 	[ "$DUR" -gt 300 ] && DUR=300
+	# ревью 2.6.5: во время теста/валидации Zapret2 остановлен, nfqws2 - от blockcheck2:
+	# проба измерила бы не вашу стратегию
+	if pid_alive || val_alive; then echo "state=error msg=идёт тест или валидация - запустите пробу после"; exit 1; fi
 	# Рестарт-семантика: гасим старые прод-пробы и запускаем с текущими параметрами
 	rm -f /tmp/tspu_prod.stop
 	pkill -f '[t]spu-test _prod' 2>/dev/null
@@ -914,6 +922,8 @@ val_stop() {
 VAL_REPORT=/tmp/tspu_val.report
 
 _val_report() {
+	# ревью 2.6.5: $2 сохраняем - ниже «set -- $AVRES» затирает позиционные параметры
+	VREP=$2
 	# Ревью 2.5 п.1.1/1.10: (1) счётчик сбрасывается на ЛЮБОЙ строке «- ...» и на
 	# «clearing» (раньше только на «- curl_test»: AVAILABLE из «- IP block tests»
 	# следующего блока засчитывался стратегии -> любая строка получала
@@ -927,15 +937,17 @@ _val_report() {
 		# Ошибка nfqws2 в блоке стратегии (например, "desync function 'circular' does not
 		# exist" - функции нет в lua-наборе zapret2) = попытки шли БЕЗ обхода
 		VERR=$(awk -v pat="nfqws2 $A" '
-			index($0, pat) > 0 { f = 1; next }
+			/^- curl_test_https_tls1[23] / { t = $0; sub(/^.* : nfqws2 /, "nfqws2 ", t); if (t == pat) { f = 1; next } }
 			/^- / || /^clearing/ { f = 0 }
 			f && /^desync function/ { print $0; exit }
 		' "$VAL_LOG" 2>/dev/null | head -n 1)
-		AVRES=$(awk -v pat="nfqws2 $A" -v rep="$2" '
-			index($0, pat) > 0 { f = 1; v = ($0 ~ /curl_test_https_tls13/) ? "13" : "12"; seen[v] = 1; next }
+		AVRES=$(awk -v pat="nfqws2 $A" -v rep="$VREP" '
+			/^- curl_test_https_tls1[23] / { t = $0; sub(/^.* : nfqws2 /, "nfqws2 ", t); if (t == pat) { f = 1; v = ($0 ~ /curl_test_https_tls13/) ? "13" : "12"; seen[v] = 1; next } }
 			/^- / || /^clearing/ { f = 0 }
 			!f { next }
-			/^\[attempt [0-9]+\]/ { t[v]++; if ($0 ~ /curl: \(/) e[v]++; next }
+			# ревью 2.6.5: неудачная попытка без вывода (напр. DNS, код 6) не ставит перевод
+			# строки - «[attempt 1] [attempt 2] AVAILABLE»: считаем все вхождения в строке
+			/^\[attempt [0-9]+\]/ { na = gsub(/\[attempt [0-9]+\]/, "&"); t[v] += na; e[v] += ($0 ~ /\] AVAILABLE$/) ? na - 1 : na; next }
 			/^!!!!! AVAILABLE !!!!!/ { a[v]++; if (rep == 1) { t[v]++ } next }
 			rep == 1 && /^UNAVAILABLE/ { t[v]++; e[v]++; next }
 			END { printf "%d %d %d %d %d %d %d %d", t["12"]+0, e["12"]+0, t["13"]+0, e["13"]+0, seen["12"]+0, seen["13"]+0, a["12"]+0, a["13"]+0 }
@@ -951,7 +963,7 @@ _val_report() {
 		if [ "$S13" = 1 ] && [ "$T13" = 0 ]; then T13=1; [ "${A13:-0}" -ge 1 ] || E13=1; fi
 		O12=$((T12 - E12)); O13=$((T13 - E13))
 		if [ -n "$VERR" ]; then
-			V="НЕ ПРОВЕРЕНА: nfqws2 не знает функцию из стратегии (${VERR#desync function }). Обновите zapret2 - в lua-скриптах вашей версии нет этой функции (nfqws2 запускался без обхода)."; NMISS=$((NMISS+1))
+			V="НЕ ПРОВЕРЕНА: nfqws2 не знает функцию из стратегии (${VERR#desync function }). Если она объявлена в lua-скриптах zapret2 - значит загрузка lua не сработала; иначе обновите zapret2 (функция появилась в свежих версиях)."; NMISS=$((NMISS+1))
 			echo "Стратегия: $V" | tee -a "$VAL_LOG" >> "$VAL_REPORT"
 			continue
 		fi
@@ -1024,6 +1036,8 @@ do_validate_start() {
 	[ "$REP" -lt 1 ] && REP=1
 	[ "$REP" -gt 5 ] && REP=5
 	if val_alive; then echo "Валидация уже идёт."; exit 0; fi
+	# ревью 2.6.5: взаимоисключение в обе стороны (do_start проверяет val_alive, здесь - pid_alive)
+	if pid_alive; then echo "state=error msg=идёт основной тест - дождитесь его окончания"; exit 1; fi
 	[ -s /tmp/tspu_validate.txt ] || { echo "state=error msg=вставьте стратегию в поле"; exit 1; }
 	[ -f /opt/zapret2/blockcheck2.sh ] || { echo "state=error msg=Zapret2 not found"; exit 1; }
 	# Запрещены только shell-критичные символы (обратная кавычка, $, ;, &, |, <, >) -
@@ -1039,6 +1053,12 @@ do_validate_start() {
 	tr -d '\r' < /tmp/tspu_validate.txt | grep -vE '^[[:space:]]*(#|$)' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | tr '\n' ' ' | tr -s ' ' | sed 's/ $//' > /tmp/tspu_validate_norm.txt
 	echo >> /tmp/tspu_validate_norm.txt
 	grep -q . /tmp/tspu_validate_norm.txt || { echo "state=error msg=no strategy rows"; exit 1; }
+	# ревью 2.6.5: blockcheck2 (1.0.7) сам грузит zapret-lib.lua и zapret-antidpi.lua
+	# (send/tls_client_hello_clone - в antidpi). circular - в zapret-auto.lua, который
+	# blockcheck2 НЕ грузит: добавляем именно его и только если в стратегии есть circular.
+	if grep -q 'circular' /tmp/tspu_validate_norm.txt && [ -f /opt/zapret2/lua/zapret-auto.lua ]; then
+		sed -i '1s|^|--lua-init=@/opt/zapret2/lua/zapret-auto.lua |' /tmp/tspu_validate_norm.txt
+	fi
 	# Новый запуск = старый отчёт сразу стирается
 	: > "$VAL_LOG"; : > "$VAL_REPORT"
 	echo "state=starting" > "$VAL_STATUS"
@@ -1192,6 +1212,9 @@ make_list() {
 --payload=tls_client_hello --lua-desync=multisplit:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=6
 --payload=tls_client_hello --lua-desync=multidisorder:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=6
 # --- 32-33: клон-фейк (HS-идея): фейк с КЛОНИРОВАННЫМ ClientHello клиента ---
+# --lua-init: clone/send - LUA-функции zapret2, прод их грузит через zapret-lib.lua,
+# blockcheck2 запускает nfqws2 без загрузки lua - без этого строки не стартуют
+# («desync function does not exist», попытки без обхода) и показывали бы ложный провал
 --payload=tls_client_hello --lua-desync=tls_client_hello_clone:blob=hs32 --lua-desync=fake:blob=hs32:tcp_md5:repeats=6
 --payload=tls_client_hello --lua-desync=tls_client_hello_clone:blob=hs33 --lua-desync=fake:blob=hs33:tcp_md5:repeats=6 --lua-desync=multidisorder:pos=midsld
 # --- 34: send-эхо (HS-приём): неизменённые копии hello - серверу данные, DPI шум ---
@@ -1228,6 +1251,10 @@ case "${1:-}" in
 		[ -f /etc/config/zapret2 ] || { echo "state=error msg=/etc/config/zapret2 not found (Zapret2 установлен?)"; exit 1; }
 		if [ ! -s /tmp/tspu_apply.script ] || ! grep -q -- '--lua-desync' /tmp/tspu_apply.script; then
 			# ПУТЬ УДАЛЕНИЯ: пустой сценарий/маркер = убрать секцию целиком
+			# ревью 2.6.5: кнопка «Удалить секцию» идёт сюда (@REMOVE@), а не в removetspu -
+			# бэкап нужен и здесь (иначе $BK пуст и откат при ошибке uci не срабатывает)
+			BK="/tmp/zapret2.backup.$(date +%Y%m%d%H%M%S)"
+			cp /etc/config/zapret2 "$BK" 2>/dev/null || { echo "state=error msg=backup failed"; exit 1; }
 			awk '/^config strategy .tspu_test.$/{skip=1; next} /^config /{skip=0} !skip' /etc/config/zapret2 > /etc/config/zapret2.new
 			mv /etc/config/zapret2.new /etc/config/zapret2
 			uci -q show zapret2 >/dev/null 2>&1 || { cp "$BK" /etc/config/zapret2; echo "state=error msg=uci validation failed - restored"; exit 1; }

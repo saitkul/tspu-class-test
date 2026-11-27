@@ -19,13 +19,14 @@ jobs:
 
       - name: Normalize package files
         run: |
-          # CRLF -> LF (ash ломается на «EOF\r»), права: каталоги 755, файлы 644, CLI 755
-          find apk-data -type f -exec sed -i 's/\r$//' {} +
+          # CRLF -> LF (ash ломается на «EOF\r»). ВАЖНО: только текстовые файлы —
+          # utlscurl/ytsniff это UPX-сжатые Go-бинарники, sed портит их байты CR
+          find apk-data -type f ! -name utlscurl ! -name ytsniff -exec sed -i 's/\r$//' {} +
           find apk-data -type d -exec chmod 755 {} +
           find apk-data -type f -exec chmod 644 {} +
-          chmod 755 apk-data/usr/bin/tspu-test
+          chmod 755 apk-data/usr/bin/tspu-test apk-data/usr/bin/utlscurl apk-data/usr/bin/ytsniff
           # Версия в SCRIPT_VER и в version-файл для LuCI
-          sed -i 's/@APP_VERSION@/2.6.4/' apk-data/usr/bin/tspu-test apk-data/usr/share/tspu-test/version
+          sed -i 's/@APP_VERSION@/3.0/' apk-data/usr/bin/tspu-test apk-data/usr/share/tspu-test/version
 
       - name: Create package scripts
         run: |
@@ -39,16 +40,41 @@ jobs:
           exit 0
           EOF
           cp apk-scripts/post-install apk-scripts/post-upgrade
+          # pre-deinstall: полная stop-цепочка как в uninstall.sh (ревью 3.3.0:
+          # uninstall оставлял живыми канарейку/прод/валидатор/ytbest и ytsniff)
           cat > apk-scripts/pre-deinstall <<'EOF'
           #!/bin/sh
           [ -x /usr/bin/tspu-test ] && /usr/bin/tspu-test stop >/dev/null 2>&1
+          [ -x /usr/bin/tspu-test ] && /usr/bin/tspu-test validate stop >/dev/null 2>&1
+          [ -x /usr/bin/tspu-test ] && /usr/bin/tspu-test prod stop >/dev/null 2>&1
+          [ -x /usr/bin/tspu-test ] && /usr/bin/tspu-test canary stop >/dev/null 2>&1
+          [ -x /usr/bin/tspu-test ] && /usr/bin/tspu-test yt stop >/dev/null 2>&1
+          pkill -f '[y]tsniff' 2>/dev/null
+          pkill -f '[b]lockcheck2.sh' 2>/dev/null
+          if ! pgrep nfqws2 >/dev/null 2>&1; then
+              [ -f /tmp/tspu_test.was ] && /etc/init.d/zapret2 start >/dev/null 2>&1
+          fi
+          for A in $(uci -q get dhcp.@dnsmasq[0].address 2>/dev/null); do
+              case "$A" in *googlevideo.com*) uci -q del_list dhcp.@dnsmasq[0].address="$A" ;; esac
+          done
+          uci -q commit dhcp 2>/dev/null
+          /etc/init.d/dnsmasq restart >/dev/null 2>&1
           exit 0
           EOF
           cat > apk-scripts/post-deinstall <<'EOF'
           #!/bin/sh
-          rm -f /tmp/tspu_test.pid /tmp/tspu_test.status /tmp/tspu_test_run.log
+          rm -f /tmp/tspu_test.pid /tmp/tspu_test.status /tmp/tspu_test_run.log /tmp/tspu_test.was
           rm -f /tmp/class_test.log /tmp/class_test.log.short
-          rm -f /tmp/class_report.awk /tmp/class_report.txt /tmp/list_stage1.txt /tmp/class_runner.sh
+          rm -f /tmp/class_report.awk /tmp/class_report.txt /tmp/class_report.d* /tmp/list_stage1.txt /tmp/class_runner.sh
+          rm -f /tmp/tspu_domains.txt /tmp/class_normlist.* /tmp/class_minilist.* /tmp/tspu_curl_probe /tmp/tspu_curl_metrics.*
+          rm -f /tmp/tspu_val.pid /tmp/tspu_val.status /tmp/tspu_val.log /tmp/tspu_val.report /tmp/tspu_val_run.log /tmp/tspu_validate.txt /tmp/tspu_validate_norm.txt
+          rm -f /tmp/tspu_prod.pid /tmp/tspu_prod.status /tmp/tspu_prod.log /tmp/tspu_prod_run.log /tmp/tspu_prod.stop
+          rm -f /tmp/tspu_can.pid /tmp/tspu_can.status /tmp/tspu_canary.log /tmp/tspu_can_run.log /tmp/tspu_can.stop
+          rm -f /tmp/tspu_yt.log /tmp/tspu_ytn.log /tmp/tspu_ytn.start /tmp/tspu_yt.mode /tmp/tspu_yt.start /tmp/tspu_yt.sec /tmp/tspu_yt.exit
+          rm -rf /tmp/ytbest
+          rm -f /tmp/tspu_transport.txt /tmp/tspu_apply.log /tmp/tspu_profiles.log /tmp/tspu_utls.log
+          rm -f /tmp/tspu_apply.script /tmp/tspu_apply.hostlist /tmp/tspu_apply.l3 /tmp/tspu_ggc_remap.conf
+          rm -rf /usr/share/tspu-test/ytbest
           exit 0
           EOF
           chmod 755 apk-scripts/*
@@ -59,18 +85,18 @@ jobs:
           sudo chown -R 0:0 apk-data apk-scripts
           ./sbin/apk.static mkpkg \
             --info "name:luci-app-tspu-test" \
-            --info "version:2.6.4" \
+            --info "version:3.0" \
             --info "arch:noarch" \
-            --info "description:TSPU test - определение класса ТСПУ провайдера для Zapret2 (34 стратегии, SCANLEVEL=force, вердикт КЛАСС ТСПУ и рекомендация). Ядро tspu-class-test v2.6.4." \
+            --info "description:TSPU test - определение класса ТСПУ провайдера для Zapret2 (34 стратегии, IPv6-проба, проверка адаптивности, вкладки Транспорт и Подбор, SCANLEVEL=force, вердикт КЛАСС ТСПУ и рекомендация). Ядро tspu-class-test v3.0." \
             --info "license:MIT" \
             --info "depends:libc luci-base curl luci-lua-runtime" \
             --script "post-install:apk-scripts/post-install" \
             --script "post-upgrade:apk-scripts/post-upgrade" \
             --script "pre-deinstall:apk-scripts/pre-deinstall" \
             --script "post-deinstall:apk-scripts/post-deinstall" \
-          --output luci-app-tspu-test-2.6.4.apk \
+          --output luci-app-tspu-test-3.0.apk \
           --files apk-data
-          ls -la luci-app-tspu-test-2.6.4.apk
+          ls -la luci-app-tspu-test-3.0.apk
 
       - name: Verify package installs into clean root
         run: |
@@ -79,7 +105,7 @@ jobs:
           # depends - содержимое (data) идентично публикуемому пакету.
           ./sbin/apk.static mkpkg \
             --info "name:luci-app-tspu-test" \
-            --info "version:2.6.4" \
+            --info "version:3.0" \
             --info "arch:noarch" \
             --info "license:MIT" \
             --output /tmp/verify-nodeps.apk \
@@ -93,19 +119,27 @@ jobs:
           cat /tmp/troot/usr/share/tspu-test/version
           echo "=== markers ==="
           grep -c "elClear.disabled = r" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
-          grep -c "tspu_title_ver" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
-          grep -c "(версия: v' + st.version" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
+          grep -c "tspu_btn_stop" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
+          grep -c "ЭТАП 1/2" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
+          grep -c "tspu-quote" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
+          grep -c "parseStatus" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
           grep -c "indexOf('=== ИТОГ')" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
+          grep -c "версия: v3.0" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
           grep -c "Date.now()" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
           grep -c "pkg_version" /tmp/troot/usr/lib/lua/luci/controller/tspu-test.lua
-          grep -c "SCRIPT_VER=\"TSPU test 2.6.4" /tmp/troot/usr/bin/tspu-test
+          grep -c "SCRIPT_VER=\"TSPU test 3.0" /tmp/troot/usr/bin/tspu-test
           grep -c "blockcheck2.sh" /tmp/troot/usr/bin/tspu-test
           grep -c "РЕКОМЕНДАЦИЯ (" /tmp/troot/usr/bin/tspu-test
           grep -c "tspuPrompt" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
           grep -c "tspu_reco" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
           grep -c "Что делать после теста" /tmp/troot/usr/lib/lua/luci/view/tspu-test/test.htm
+          echo "=== binaries executable ==="
+          [ -x /tmp/troot/usr/bin/utlscurl ] && echo "utlscurl 755 OK"
+          [ -x /tmp/troot/usr/bin/ytsniff ] && echo "ytsniff 755 OK"
+          echo "=== binaries intact ==="
+          file /tmp/troot/usr/bin/utlscurl /tmp/troot/usr/bin/ytsniff || true
 
       - uses: actions/upload-artifact@v4
         with:
-          name: luci-app-tspu-test-2.6.4.apk
-          path: luci-app-tspu-test-2.6.4.apk
+          name: luci-app-tspu-test-3.0.apk
+          path: luci-app-tspu-test-3.0.apk

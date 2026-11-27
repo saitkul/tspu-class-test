@@ -21,14 +21,28 @@
 	h2.tspu-h1 a { color: #ffffff !important; }
 	.tspu-subtitle { color: #e6e6e6; margin: 0 0 8px; font-size: 14px; }
 	/* Вкладки в стиле ZeroBlock: серый фон-чип у каждой, активная — жёлтый текст */
-	#tspu_tabs { margin-bottom: .8em; }
+	#tspu_tabs { margin-bottom: .8em; display: flex; flex-wrap: wrap; gap: 4px; }
 	#tspu_tabs button {
-		background: #2a2d33; border: none; border-radius: 3px;
-		color: #b7bcc4; padding: 5px 14px; font-size: 14px; cursor: pointer; outline: none;
-		margin-right: 4px;
+		background: #1e2124; border: 1px solid #3a3d41; border-radius: 5px 5px 0 0;
+		color: #b7bcc4; padding: 6px 14px; font-size: 14px; cursor: pointer; outline: none;
 	}
-	#tspu_tabs button.tspu-active { color: #f0c53d; font-weight: bold; }
+	#tspu_tabs button.tspu-active {
+		background: #0d0f11; color: #f0c53d; font-weight: bold;
+		border-color: #f0c53d; border-bottom-color: #0d0f11;
+	}
 	.tspu-note-italic { font-style: italic; }
+	/* Цитата-подсказка (стиль Hello Strategy): осветлённый прямоугольник,
+	   жёлтая левая грань — в акцент активной вкладки (#f0c53d) */
+	.tspu-quote {
+		background: rgba(255, 255, 255, 0.045);
+		border-left: 3px solid #f0c53d;
+		border-radius: 4px;
+		padding: .6em .9em;
+		margin: 6px 0 8px;
+		color: #d8dde3;
+		font-size: 13px;
+	}
+	.tspu-quote-note { font-style: italic; margin-top: .5em; color: #b9c3cd; }
 	/* Кнопка запуска в стиле Zapret2: зелёная */
 	#tspu_btn_start { background: #2e7d32; color: #fff; border: 1px solid #2e7d32; }
 	#tspu_btn_start:disabled { opacity: .5; }
@@ -36,10 +50,12 @@
 
 <div class="cbi-map" id="tspu_test_map">
 	<h2 class="tspu-h1">TSPU test</h2>
-	<div class="tspu-subtitle">Класс-тест ТСПУ провайдера<span id="tspu_title_ver"></span></div>
+	<div class="tspu-subtitle">Класс-тест ТСПУ провайдера (версия: v@APP_VERSION@)</div>
 	<div class="cbi-map-descr">
-		<p>Определяет, какие механики десинхронизации пропускает ТСПУ вашего провайдера: 34 стратегии (нарезка / голый фейк / комбинации / двухпакетный hello / шумовая серия дробилки / клон-фейк и send-эхо) на TLS 1.2 и TLS 1.3 в режиме SCANLEVEL=force. Вкладка «Тест» печатает вердикт «КЛАСС ТСПУ» и рекомендацию (можно несколько доменов разом — например, сайт и его узел googlevideo); «Генератор стратегий» превращает отчёт в готовые строки; «Прод-проба» меряет деградацию повторных соединений при живом Zapret2 и ECH в DNS; «Валидатор» проверяет чужие стратегии на вашем ТСПУ; «Канарейка» фоново контролирует живость текущей стратегии.</p>
-		<p class="tspu-note-italic">На время теста служба Zapret2 останавливается и запускается обратно по завершении. Финальную проверку стратегии всегда делайте в браузере в режиме Инкогнито.</p>
+		<div class="tspu-quote">
+			<div>Определяет, какие механики десинхронизации пропускает ТСПУ вашего провайдера: 34 стратегии на TLS 1.2 и TLS 1.3 в режиме SCANLEVEL=force.</div>
+			<div class="tspu-quote-note">На время теста служба Zapret2 останавливается и запускается обратно по завершении. Финальную проверку стратегии всегда делайте в браузере в режиме Инкогнито.</div>
+		</div>
 	</div>
 
 	<div class="cbi-section">
@@ -49,6 +65,8 @@
 			<button id="tspu_tab_btn_prod" type="button" onclick="tspuTab('prod')">Прод-проба</button>
 			<button id="tspu_tab_btn_val" type="button" onclick="tspuTab('val')">Валидатор</button>
 			<button id="tspu_tab_btn_can" type="button" onclick="tspuTab('can')">Канарейка</button>
+			<button id="tspu_tab_btn_sel" type="button" onclick="tspuTab('sel')">Подбор</button>
+			<button id="tspu_tab_btn_tra" type="button" onclick="tspuTab('tra')">Транспорт</button>
 		</div>
 		<div id="tspu_tab_test">
 		<div class="cbi-value">
@@ -102,11 +120,11 @@
 			<label class="cbi-value-title">Управление</label>
 			<div class="cbi-value-field">
 				<button id="tspu_btn_start" class="btn cbi-button" onclick="tspuStart()">Запустить тест</button>
+				<button id="tspu_btn_stop" class="btn cbi-button cbi-button-negative" onclick="tspuStop()" style="display:none">Остановить тест</button>
 				<button id="tspu_btn_clear" class="btn cbi-button cbi-button-neutral" onclick="tspuClear()">Очистить лог</button>
 				<button id="tspu_btn_copy" class="btn cbi-button cbi-button-neutral" onclick="tspuCopy()">Скопировать отчёт</button>
 				<button id="tspu_btn_prompt" class="btn cbi-button cbi-button-neutral" onclick="tspuPrompt()">Промт для нейросети</button>
 				<div id="tspu_status" style="margin-top:.3em; font-size:.92em"></div>
-				<div style="color:#ccc; margin-top:.3em; font-size:.92em; font-weight:bold; text-transform:uppercase">В терминале можно:<br/>Остановить тест: /usr/bin/tspu-test stop<br/>Следить за прогрессом: /usr/bin/tspu-test status</div>
 			</div>
 		</div>
 		<div class="cbi-value" id="tspu_verdict" style="display:none">
@@ -265,6 +283,7 @@
 			<div class="cbi-value">
 				<label class="cbi-value-title">Управление</label>
 				<div class="cbi-value-field">
+					<label style="display:inline-block; margin-right:1.2em"><input type="checkbox" id="val_utls"> Отпечаток браузера (uTLS Chrome; только TLS 1.3)</label>
 					<button class="btn cbi-button" onclick="valStart()">Валидировать</button>
 					<button class="btn cbi-button cbi-button-negative" onclick="valStop()">Остановить</button>
 					<button class="btn cbi-button cbi-button-neutral" onclick="valClear()">Очистить отчёт</button>
@@ -325,6 +344,89 @@
 			</div>
 		</div>
 
+		<div id="tspu_tab_sel" style="display:none">
+			<p class="cbi-section-descr"><b>Подбор блока circular под РЕАЛЬНЫЕ узлы</b> (ytbest). Приложение само слушает, к каким узлам googlevideo ходит YouTube, прогоняет кандидатов на трудных узлах обычным curl и с отпечатком браузера (uTLS Chrome, kyber), отсеивает «мягкие» узлы и собирает готовую лестницу. Конфиг Zapret2 не меняет — блок вставляете сами.</p>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Как пользоваться</label>
+				<div class="cbi-value-field"><div style="color:#ccc; font-size:.95em">
+					1. Убедитесь, что Zapret2 запущен и YouTube открывается.<br>
+					2. Нажмите <b>«Запустить подбор»</b> — приложение 30–180 секунд слушает сеть (<b>в это время СМОТРИТЕ YouTube</b>: несколько видео, 4К, шортсы — на ПК и телефоне), затем 10–40 минут прогоняет кандидатов на найденных узлах.<br>
+					3. <b>Не закрывайте страницу</b> — статус обновляется сам каждые 5 секунд.<br>
+					4. Когда появится «Подбор завершён» — готовый блок circular будет ниже. Вставьте его в Zapret2 вместо текущего, перезапустите и проверьте видео (Инкогнито).
+				</div></div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title" for="sel_sec">Слушать сеть, с</label>
+				<div class="cbi-value-field"><input id="sel_sec" type="text" value="180" style="max-width:120px"> (30–900; чем дольше смотрите YouTube — тем больше узлов)</div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Запуск</label>
+				<div class="cbi-value-field">
+					<button id="sel_btn_start" class="btn cbi-button cbi-button-positive" onclick="selStart()">Запустить подбор</button>
+					<div style="color:#888; margin-top:.3em; font-size:.92em">Во время подбора Zapret2 ВЫКЛЮЧЕН — видео и Discord не работают до конца подбора. Кнопка «Остановить» прерывает и возвращает Zapret2. Пока идёт подбор, кнопка запуска неактивна — следите за статусом ниже.</div>
+				</div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Управление</label>
+				<div class="cbi-value-field">
+					<button class="btn cbi-button" onclick="selSelftest()">Проверка установки</button>
+					<button class="btn cbi-button cbi-button-neutral" onclick="selNodes()">Слушание узлов (без прогонов)</button>
+					<button class="btn cbi-button cbi-button-neutral" onclick="selCand()">Кандидаты из отчёта</button>
+					<button class="btn cbi-button cbi-button-negative" onclick="selStop()">Остановить</button>
+					<button class="btn cbi-button cbi-button-neutral" onclick="selClear()">Очистить отчёты</button>
+					<div style="color:#888; margin-top:.3em; font-size:.92em">«Слушание узлов» — только слушание сети в течение поля «Слушать сеть, с»: во время него смотрите YouTube — узлы появляются из вашего трафика. «Кандидаты из отчёта» — набор строк для прогонов: персональный (строки, прошедшие Тест) или стандартный, если отчёта Теста в /tmp нет (очищается перезагрузкой); пересобирается при каждом нажатии. «Очистить отчёты» стирает отчёты, узлы и логи слушания; файл кандидатов сохраняется. Взаимоисключение с тестом/валидатором — ytbest сам проверяет занятость.</div>
+				</div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Статус</label>
+				<div class="cbi-value-field"><div id="sel_status" style="white-space:pre-wrap">—</div></div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Отчёт подбора</label>
+				<div class="cbi-value-field"><textarea id="sel_report" readonly="readonly" wrap="off" style="width:100%; height:260px; font-family:monospace; white-space:pre; padding:.5em"></textarea></div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Готовый блок circular</label>
+				<div class="cbi-value-field">
+					<textarea id="sel_block" readonly="readonly" wrap="off" style="width:100%; height:180px; font-family:monospace; white-space:pre; padding:.5em"></textarea>
+					<div style="margin-top:.4em">
+						<button class="btn cbi-button cbi-button-positive" onclick="selApply()">Применить блок в Zapret2</button>
+						<div style="color:#888; margin-top:.3em; font-size:.92em">Применение создаёт секцию tspu_test с параметрами: порт 443, IPv4, TCP, фильтр L7 = TLS (обязателен — все механики блока работают на TLS-хендшейке), список хостов — ваш YouTube-список (имя резолвится по вкладке «Списки»). Перед применением секция резервируется; при ошибке — автоматический откат. После применения перезапустите Zapret2 и проверьте видео (Инкогнито).</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div id="tspu_tab_tra" style="display:none">
+			<div class="tspu-quote">
+				<div>Проверка измеряет, какие ТРАНСПОРТЫ проходит ваш ТСПУ к узлам YouTube и зарубежным сайтам, и даёт вердикт — что делать с видео: <b>sni</b> — ТСПУ читает имена сайтов (обычная фильтрация): работают все стратегии nfqws2, туннель не нужен; <b>freeze</b> — ТСПУ душит долгие соединения по объёму: видео обрывается после ~16–20 КБ независимо от стратегий — помогает туннель или дробление загрузки на много соединений; <b>ipdrop</b> — узлы закрыты по адресу целиком (как Instagram по IP): стратегии бессильны, видео только через туннель (WARP/WireGuard/ESP). Адресная проба идёт по ВСЕМ узлам из Подбора (до 5).</div>
+				<div class="tspu-quote-note">Смотреть видео во время проверки НЕ нужно — весь трафик генерирует сама проверка (до ~1,5 мин в зависимости от числа узлов, до ~6 МБ на пробу заморозки). Ничего не меняет в настройках; обновлять страницу безопасно — прогресс и отчёт сохраняются.</div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Проверка</label>
+				<div class="cbi-value-field">
+					<button class="btn cbi-button cbi-button-positive" onclick="trStart()">Запустить проверку транспорта</button>
+					<div style="color:#888; margin-top:.3em; font-size:.92em">Зачем это Подбору: если узлы окажутся закрыты адресно, Подбор честно скажет «нужен туннель» и подскажет какой — по возможностям вашей прошивки (ESP/WireGuard) или WARP на устройствах. При классе sni туннель не нужен — работают стратегии.</div>
+				</div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Статус</label>
+				<div class="cbi-value-field"><div id="tra_status" style="white-space:pre-wrap">—</div></div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">Отчёт</label>
+				<div class="cbi-value-field"><textarea id="tra_out" readonly="readonly" wrap="off" style="width:100%; height:320px; font-family:monospace; white-space:pre; padding:.5em"></textarea></div>
+			</div>
+			<div class="cbi-value">
+				<label class="cbi-value-title">GGC-ремап (пиннинг живых узлов)</label>
+				<div class="cbi-value-field">
+					<button class="btn cbi-button" onclick="traRemap()">Сгенерировать ремап из узлов</button>
+					<button class="btn cbi-button cbi-button-apply" onclick="traRemapApply()">Применить ремап</button>
+					<button class="btn cbi-button cbi-button-negative" onclick="traRemapOff()">Снять ремап</button>
+					<div style="color:#888; margin-top:.3em; font-size:.92em">Фиксирует DNS-ответы наблюдённых семейств узлов (rrN---sn-XXXX) на их текущие IP (резолв через DoH мимо fake-IP DNS) — YouTube перестаёт «терять» рабочий узел при ротации DNS (запись матчит все поддомены семейства). Запись идёт через uci в главный конфиг dnsmasq — переживает перезагрузку роутера; «Применить» перезапускает dnsmasq (краткий DNS-перерыв, соединения не рвутся); при ротации GGC запиненный IP может умереть — снимается кнопкой «Снять». Узлы берутся из вкладки «Подбор» (слушание сети).</div>
+				</div>
+			</div>
+		</div>
+
 <div class="cbi-value" style="margin-top:.6em; color:#888">
 			<span>Полные логи на роутере: /tmp/class_test.log (сырой), /tmp/class_test.log.short (краткий, для issue) — создаются при запуске теста, очищаются при перезагрузке роутера. Скрипт: /usr/bin/tspu-test.
 			Проект: <a href="https://github.com/saitkul/tspu-class-test/" target="_blank" rel="noopener">github.com/saitkul/tspu-class-test</a></span>
@@ -337,6 +439,7 @@
 (function () {
 	var U_STATUS = '<%=luci.dispatcher.build_url("admin/services/tspu-test/status")%>';
 	var U_START  = '<%=luci.dispatcher.build_url("admin/services/tspu-test/start")%>';
+	var U_STOP   = '<%=luci.dispatcher.build_url("admin/services/tspu-test/stop")%>';
 	var U_CLEAR  = '<%=luci.dispatcher.build_url("admin/services/tspu-test/clearlog")%>';
 	var U_LOG    = '<%=luci.dispatcher.build_url("admin/services/tspu-test/log")%>';
 	var U_DL     = '<%=luci.dispatcher.build_url("admin/services/tspu-test/download")%>';
@@ -346,12 +449,11 @@
 	var elRep = document.getElementById('tspu_repeats');
 	var elWait = document.getElementById('tspu_wait');
 	var elStart = document.getElementById('tspu_btn_start');
+	var elStop = document.getElementById('tspu_btn_stop');
 	var elClear = document.getElementById('tspu_btn_clear');
 	var elCopy = document.getElementById('tspu_btn_copy');
 	var elPrompt = document.getElementById('tspu_btn_prompt');
 	var elStatus = document.getElementById('tspu_status');
-	var elTitleVer = document.getElementById('tspu_title_ver');
-	var titleVerDone = false;
 	var elAuto = document.getElementById('tspu_autoscroll');
 	var elLog = document.getElementById('tspu_log');
 	var elDlBlock = document.getElementById('tspu_dl_block');
@@ -379,6 +481,18 @@
 			var m = line.match(/^([a-z_]+)=(.*)$/);
 			if (m) o[m[1]] = m[2];
 		});
+		/* CLI пишет state=running progress=N/M elapsed=X ОДНОЙ строкой (ревью 3.3.0:
+		   «контрактный дрейф» — из-за этого прогресс никогда не отображался).
+		   Раскрываем токены state=… в отдельные ключи. Хвостовые слова без = 
+		   («(проверка адаптивности)») игнорируются. */
+		var first = (o.state || '').split(' ');
+		if (first.length > 1) {
+			o.state = first[0];
+			for (var i = 1; i < first.length; i++) {
+				var mm = first[i].match(/^([a-z_]+)=(.*)$/);
+				if (mm) o[mm[1]] = mm[2];
+			}
+		}
 		/* alive=0 при running — runner мёртв, тест считаем завершённым.
 		   starting при alive=0 НЕ подменяем: это окно запуска (PID ещё не
 		   записан). Кнопками управляет лог (applyLog), здесь только
@@ -393,9 +507,10 @@
 		elDomain.disabled = r;
 		elRep.disabled = r;
 		elWait.disabled = r;
-		/* Во время теста Старт, Очистить лог, Скопировать отчёт и Промт пассивны.
-		   Кнопки «Остановить» нет (решение владельца): остановка —
-		   /usr/bin/tspu-test stop в терминале. */
+		/* Стоп-кнопка видна ТОЛЬКО во время теста (возвращена по решению
+		   владельца 27.11 — прежнее «решение без кнопки» отменено) */
+		elStop.style.display = r ? '' : 'none';
+		elStop.disabled = false;
 		elClear.disabled = r;
 		elCopy.disabled = r;
 		elPrompt.disabled = r;
@@ -405,10 +520,16 @@
 		/* Пустой/битый ответ (сбой сети, обрыв сессии) — ничего не трогаем */
 		if (!text || text.indexOf('state=') < 0) return;
 		var st = parseStatus(text);
-		/* Надпись «Статус» убрана по решению владельца. Из status берём
-		   только версию (заголовок), ошибку запуска и остановку (страховка
-		   разблокировки кнопок, если лог-маркер не дошёл). Кнопками в целом
-		   управляет ЛОГ (см. applyLog). */
+		/* Прогресс в реальном времени (обновление раз в 3 с): state=running
+		   несёт progress=N/M, elapsed, domain — печатаем компактно */
+		if (st.state == 'running' && st.alive == '1') {
+			var parts = [];
+			if (st.progress) parts.push(st.progress + ' проверок');
+			if (st.elapsed) parts.push('прошло ' + st.elapsed + ' с');
+			if (st.domain && st.domain != '-') parts.push('домен: ' + st.domain);
+			elStatus.textContent = 'Идёт тест — ' + (parts.length ? parts.join(', ') : 'сборка отчёта') + '.';
+			return;
+		}
 		if (st.state == 'error') {
 			elStatus.textContent = 'Ошибка: ' + (st.msg || 'см. вывод теста');
 			setRunning(false);
@@ -416,12 +537,9 @@
 			setRunning(false);
 		}
 
-		/* Версия пакета (status отдаёт version=, если контроллер её знает) —
-		   показывается один раз в заголовке страницы */
-		if (st.version && !titleVerDone) {
-			titleVerDone = true;
-			elTitleVer.textContent = ' (версия: v' + st.version + ')';
-		}
+		/* Версия пакета теперь подставляется при сборке прямо в заголовок
+		   (@APP_VERSION@) и видна сразу при открытии страницы —
+		   прежняя JS-подстановка срабатывала только после первого запуска инструмента */
 	}
 
 	function xhr(url, cb, errCb) {
@@ -593,6 +711,14 @@
 		xhr(U_LOG, function (t) { applyLog(t); });
 	}
 
+	window.tspuStop = function () {
+		if (!window.confirm('Остановить тест? Zapret2 будет возвращён, тест прервётся (частичный лог сохранится).')) return;
+		elStop.disabled = true;
+		elStatus.textContent = 'Останавливаю тест — Zapret2 возвращается...';
+		xhr(U_STOP, null);
+		/* Кнопки разлочит applyLog по маркеру «=== ТЕСТ ОСТАНОВЛЕН ===» или applyStatus по state=stopped */
+	};
+
 	window.tspuStart = function () {
 		/* Очистка доменов: https://, пути, порты и прочий хвост убираются.
 		   Несколько доменов - через пробел (например, сайт и его узел googlevideo):
@@ -718,7 +844,7 @@
 	var curTab = 'test';
 	window.tspuTab = function (name) {
 		curTab = name;
-		var tabs = ['test', 'gen', 'prod', 'val', 'can'];
+		var tabs = ['test', 'gen', 'prod', 'val', 'can', 'sel', 'tra'];
 		for (var i = 0; i < tabs.length; i++) {
 			var t = (name === tabs[i]);
 			var el = document.getElementById('tspu_tab_' + tabs[i]);
@@ -729,6 +855,11 @@
 		if (t === true && name === 'prod') prodRefresh();
 		if (t === true && name === 'val') valRefresh();
 		if (t === true && name === 'can') canRefresh();
+		if (name === 'sel') {
+			selRefresh();
+			if (!selTimer) selTimer = setInterval(function () { selRefresh(); }, 5000);
+		} else if (selTimer) { clearInterval(selTimer); selTimer = null; }
+		if (name === 'tra') traPoll(); /* открыть вкладку = показать прогресс/отчёт (переживает обновление страницы) */
 	};
 	document.getElementById('tspu_tab_btn_test').className = 'tspu-active';
 
@@ -743,6 +874,20 @@
 	var U_VAL_STATUS = '<%=luci.dispatcher.build_url("admin/services/tspu-test/valstatus")%>';
 	var U_VAL_LOG = '<%=luci.dispatcher.build_url("admin/services/tspu-test/vallog")%>';
 	var U_VAL_REPORT = '<%=luci.dispatcher.build_url("admin/services/tspu-test/valreport")%>';
+	var U_YT_START = '<%=luci.dispatcher.build_url("admin/services/tspu-test/ytstart")%>';
+	var U_YT_STOP = '<%=luci.dispatcher.build_url("admin/services/tspu-test/ytstop")%>';
+	var U_YT_STATUS = '<%=luci.dispatcher.build_url("admin/services/tspu-test/ytstatus")%>';
+	var U_YT_REPORT = '<%=luci.dispatcher.build_url("admin/services/tspu-test/ytreport")%>';
+	var U_YT_BLOCK = '<%=luci.dispatcher.build_url("admin/services/tspu-test/ytblock")%>';
+	var U_YT_SELFTEST = '<%=luci.dispatcher.build_url("admin/services/tspu-test/ytselftest")%>';
+	var U_YT_CAND = '<%=luci.dispatcher.build_url("admin/services/tspu-test/ytcand")%>';
+	var U_YT_CLEAR = '<%=luci.dispatcher.build_url("admin/services/tspu-test/ytclear")%>';
+	var U_YT_APPLY = '<%=luci.dispatcher.build_url("admin/services/tspu-test/ytapply")%>';
+	var U_TRANSPORT = '<%=luci.dispatcher.build_url("admin/services/tspu-test/transport")%>';
+	var U_YT_REMAP = '<%=luci.dispatcher.build_url("admin/services/tspu-test/ytremap")%>';
+	var U_YT_REMAP_APPLY = '<%=luci.dispatcher.build_url("admin/services/tspu-test/ytremapapply")%>';
+	var U_YT_REMAP_OFF = '<%=luci.dispatcher.build_url("admin/services/tspu-test/ytremapoff")%>';
+	var U_YT_NODES = '<%=luci.dispatcher.build_url("admin/services/tspu-test/ytnodes")%>';
 	var U_CAN_START = '<%=luci.dispatcher.build_url("admin/services/tspu-test/canarystart")%>';
 	var U_CAN_STOP = '<%=luci.dispatcher.build_url("admin/services/tspu-test/canarystop")%>';
 	var U_CAN_STATUS = '<%=luci.dispatcher.build_url("admin/services/tspu-test/canarystatus")%>';
@@ -812,7 +957,7 @@
 		if (!txt.replace(/\s/g, '')) { elValS.textContent = 'Вставьте строки стратегии'; return; }
 		elValS.textContent = 'Запускаю валидацию...';
 		elValL.value = 'Проверка идёт - результат появится по завершении...';
-		xget(U_VAL_START + '?domain=' + encodeURIComponent(document.getElementById('val_domain').value) + '&rep=' + encodeURIComponent(document.getElementById('val_rep').value) + '&text=' + encodeURIComponent(txt), function (t) { elValS.textContent = t; valRefresh(); }, elValS);
+		xget(U_VAL_START + '?domain=' + encodeURIComponent(document.getElementById('val_domain').value) + '&rep=' + encodeURIComponent(document.getElementById('val_rep').value) + '&utls=' + (document.getElementById('val_utls') && document.getElementById('val_utls').checked ? '1' : '0') + '&text=' + encodeURIComponent(txt), function (t) { elValS.textContent = t; valRefresh(); }, elValS);
 	};
 	window.valStop = function () {
 		xget(U_VAL_STOP, function (t) { elValS.textContent = t; valRefresh(); }, elValS);
@@ -831,6 +976,165 @@
 	};
 	window.canClear = function () {
 		xget(U_CAN_CLEAR, function (t) { elCanS.textContent = t; canRefresh(); }, elCanS);
+	};
+	var elSelS = document.getElementById('sel_status');
+	var elSelR = document.getElementById('sel_report');
+	var elSelB = document.getElementById('sel_block');
+	var elSelBtn = document.getElementById('sel_btn_start');
+	var selTimer = null;
+	var ytDoneShown = false;
+	window.selRefresh = function () {
+		xget(U_YT_STATUS, function (t) {
+			var st = (t || '—').replace(/\n+$/, '');
+			elSelS.textContent = st;
+			/* Машина состояний кнопки запуска: во время фаз ЭТАП/Слушаю/Подбор идёт
+			   кнопка неактивна с объясняющей надписью (кейс 27.11: кнопка всегда
+			   зелёная — «не понимаю, что происходит») */
+			var run = st.indexOf('ЭТАП 1/2') === 0 || st.indexOf('ЭТАП 2/2') === 0 ||
+				st.indexOf('Слушаю узлы') === 0 || st.indexOf('Подбор идёт') === 0;
+			elSelBtn.disabled = run;
+			elSelBtn.textContent = run ? 'Подбор идёт — статус ниже' : 'Запустить подбор';
+			var isDone = st.indexOf('Подбор завершён') >= 0;
+			// отчёт/блок подставляются ОДИН раз при появлении «Подбор завершён» -
+			// результат «Кандидаты из отчёта» не затирается polling'ом
+			if (isDone && !ytDoneShown) {
+				ytDoneShown = true;
+				xget(U_YT_REPORT, function (r) { elSelR.value = r || ''; }, elSelS);
+				xget(U_YT_BLOCK, function (b) { elSelB.value = b || ''; }, elSelS);
+			}
+		}, elSelS);
+	};
+	window.selNodes = function () {
+		var sec = (document.getElementById('sel_sec').value || '180').replace(/[^0-9]/g, '') || '180';
+		elSelS.textContent = 'Слушаю ' + sec + ' с — смотрите YouTube на ПК/телефоне. Результат (список узлов) появится в этом статусе через ' + sec + ' с — статус обновляется сам.';
+		xget(U_YT_NODES + '?sec=' + encodeURIComponent(sec), function (t) { elSelS.textContent = t; selRefresh(); }, elSelS);
+	};
+	window.selStart = function () {
+		ytDoneShown = false;
+		var sec = (document.getElementById('sel_sec').value || '180').replace(/[^0-9]/g, '') || '180';
+		elSelR.value = '';
+		elSelB.value = 'Блок появится по завершении подбора...';
+		elSelS.textContent = 'Запускаю подбор: слушание ' + sec + ' с (смотрите YouTube!), затем прогоны кандидатов — обычно 10–40 минут. Zapret2 будет выключен до конца. Статус обновляется сам.';
+		xget(U_YT_START + '?sec=' + encodeURIComponent(sec), function (t) { elSelS.textContent = t; selRefresh(); }, elSelS);
+	};
+	window.selStop = function () {
+		xget(U_YT_STOP, function (t) { elSelS.textContent = t; selRefresh(); }, elSelS);
+	};
+	window.selSelftest = function () {
+		xget(U_YT_SELFTEST, function (t) { elSelR.value = t || '(пусто)'; elSelR.scrollTop = 0; }, elSelS);
+	};
+	window.selCand = function () {
+		xget(U_YT_CAND, function (t) { elSelR.value = t || '(пусто)'; elSelR.scrollTop = 0; }, elSelS);
+	};
+	window.selClear = function () {
+		xget(U_YT_CLEAR, function (t) { elSelS.textContent = t; selRefresh(); }, elSelS);
+	};
+	window.selApply = function () {
+		if (!elSelB.value || elSelB.value.indexOf('появится по завершении') === 0) {
+			elSelS.textContent = 'Блока ещё нет — запустите Подбор и дождитесь «Подбор завершён», затем применяйте.';
+			return;
+		}
+		elSelS.textContent = 'Применяю блок в Zapret2 (секция tspu_test, список youtube)...';
+		xget(U_YT_APPLY, function (t) { elSelR.value = t || '(пусто)'; elSelR.scrollTop = 0; selRefresh(); }, elSelS);
+	};
+
+	/* ================= Транспорт (лайт-матрица + GGC-ремап) ================= */
+	var elTraO = document.getElementById('tra_out');
+	var elTraS = document.getElementById('tra_status');
+	var traBusy = false;
+	function traLock(lock) {
+		/* кнопки блокируются на время запроса: двойное нажатие «Применить» плодило
+		   дубли в uci-списке (полевой кейс 3.2.1), плюс CLI стал идемпотентным */
+		var btns = document.getElementById('tspu_tab_tra').getElementsByTagName('button');
+		for (var i = 0; i < btns.length; i++) btns[i].disabled = lock;
+		traBusy = lock;
+	}
+	var traTimer = null;
+	function traShow(text) {
+		elTraO.value = text || '';
+		elTraO.scrollTop = 0;
+	}
+	function traHandle(resp) {
+		/* Формат ответа CLI: строка state=... [+ elapsed=N], затем '---' и текст */
+		var s = resp || '';
+		var sep = s.indexOf('\n---\n');
+		var head = sep >= 0 ? s.substring(0, sep) : s;
+		var body = sep >= 0 ? s.substring(sep + 5) : '';
+		if (head.indexOf('state=running') === 0 || head.indexOf('state=started') === 0) {
+			var m = head.match(/elapsed=(\d+)/);
+			var el = m ? parseInt(m[1], 10) : 0;
+			elTraS.textContent = 'Проверка идёт — ' + el + ' с (до ~1,5 мин: контроль, все узлы, заморозка). Обновлять страницу безопасно — прогресс и отчёт сохраняются.';
+			if (body) { elTraO.value = body; elTraO.scrollTop = elTraO.scrollHeight; }
+			if (!traTimer) traTimer = setInterval(traPoll, 3000);
+			return;
+		}
+		if (traTimer) { clearInterval(traTimer); traTimer = null; }
+		traLock(false);
+		if (head.indexOf('state=done') === 0 || head.indexOf('state=idle') === 0) {
+			traShow(body || '(пусто)');
+			elTraS.textContent = (head.indexOf('state=idle') === 0) ? '—' : 'Готово — вердикт в конце отчёта (класс sni/freeze/ipdrop).';
+		} else {
+			traShow(s);
+			elTraS.textContent = 'Готово.';
+		}
+	}
+	function traPoll() {
+		xget(U_TRANSPORT, function (t) { traHandle(t); }, function () {
+			/* разовая сетевая ошибка поллинга — таймер живёт, повтор через 3 с */
+		});
+	}
+	window.traRefresh = function () { traPoll(); };
+	window.trStart = function () {
+		if (traBusy) return;
+		traLock(true);
+		elTraS.textContent = 'Запускаю проверку транспорта (фоном)...';
+		xget(U_TRANSPORT + '?act=start', function (t) { traHandle(t); }, function (st) {
+			traLock(false);
+			elTraS.textContent = 'Не удалось обратиться к роутеру (HTTP ' + st + ').';
+		});
+	};
+	window.traRemap = function () {
+		if (traBusy) return;
+		traLock(true);
+		elTraS.textContent = 'Генерирую ремап из узлов Подбора (uci/dnsmasq пока не тронуты)...';
+		xget(U_YT_REMAP, function (t) {
+			traLock(false);
+			elTraO.value = t || '(пусто)';
+			elTraO.scrollTop = 0;
+			elTraS.textContent = 'Готово — превью показано; применяйте кнопкой «Применить ремап».';
+		}, function (st) {
+			traLock(false);
+			elTraS.textContent = 'Не удалось обратиться к роутеру (HTTP ' + st + ').';
+		});
+	};
+	window.traRemapApply = function () {
+		if (traBusy) return;
+		if (!window.confirm('Применить GGC-ремап? Запись через uci — переживает перезагрузку роутера. dnsmasq будет перезапущен (краткий DNS-перерыв, соединения не рвутся). При ротации GGC запиненный IP может умереть — снять: кнопка «Снять ремап».')) return;
+		traLock(true);
+		elTraS.textContent = 'Применяю ремап (uci + перезапуск dnsmasq, ~2 с)...';
+		xget(U_YT_REMAP_APPLY, function (t) {
+			traLock(false);
+			elTraO.value = t || '(пусто)';
+			elTraO.scrollTop = 0;
+			elTraS.textContent = 'Готово — проверьте видео; снять: «Снять ремап».';
+		}, function (st) {
+			traLock(false);
+			elTraS.textContent = 'Не удалось обратиться к роутеру (HTTP ' + st + ').';
+		});
+	};
+	window.traRemapOff = function () {
+		if (traBusy) return;
+		traLock(true);
+		elTraS.textContent = 'Снимаю ремап (uci del_list всех экземпляров)...';
+		xget(U_YT_REMAP_OFF, function (t) {
+			traLock(false);
+			elTraO.value = t || '(пусто)';
+			elTraO.scrollTop = 0;
+			elTraS.textContent = 'Готово — DNS снова ротирует узлы свободно.';
+		}, function (st) {
+			traLock(false);
+			elTraS.textContent = 'Не удалось обратиться к роутеру (HTTP ' + st + ').';
+		});
 	};
 	window.prodClear = function () {
 		xget(U_PRODCLEAR, function (t) { elProdS.textContent = t; prodRefresh(); }, elProdS);
@@ -1184,8 +1488,8 @@
 				tf.push('— Также попробуйте повторить тест с ожиданием 8 с и повторами 5.');
 				elGenOut.value = tf.join('\n');
 				elGenOutWrap.style.display = '';
-				window.tspuApplyList = [{ n: 6, label: 'Универсальная лестница', script: communityTemplate().join('\n') }];
-			document.getElementById('tspu_apply_row').innerHTML = '<button class="btn cbi-button cbi-button-apply" onclick="tspuApply(6)">Вариант 6</button>';
+				window.tspuApplyList = [{ n: 8, label: 'Универсальная (доза 4)', script: communityTemplate(4).join('\n') }];
+			document.getElementById('tspu_apply_row').innerHTML = '<button class="btn cbi-button cbi-button-apply" onclick="tspuApply(8)">Вариант 8</button>';
 			document.getElementById('tspu_apply_wrap').style.display = '';
 			elGenStatus.textContent = 'Рабочих строк нет, но профиль флапающий — выдана универсальная лестница.';
 				return;
@@ -1215,20 +1519,51 @@
 		function stripPayload(args) {
 			return args.replace(/^--payload=\S+\s+/, '');
 		}
-		function communityTemplate() {
+		function communityTemplate(dose, nofake) {
 			/* лестница сообщества: подтверждена на флапающих ТСПУ RR 25.12.6 — Gomer, 2026-11-16.
-			   badsum-фейк внутри нарезки, 7 разрезов по границам SNI, payload=all, быстрый circular */
-			return ['--out-range=-s34228',
+			   badsum-фейк внутри нарезки, 7 разрезов по границам SNI, payload=all, быстрый circular.
+			   dose — доза badsum (4 канон; 2 — если в Подборе четвёрка мертва при живой двойке);
+			   nofake — без badsum-фейков (ТСПУ распознаёт битые чексуммы): чистая резка data-фазы,
+			   каждый пакет делится на 2 байта + остаток */
+			var bs = (dose === 2) ? 2 : 4;
+			var out = ['--out-range=-s34228',
 				'--payload=all',
 				'--in-range=-s5556',
 				'--lua-desync=circular:fails=2:time=60:retrans=2:nld=2:reset',
-				'--in-range=x',
-				'--lua-desync=multisplit:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=4:strategy=1',
-				'--lua-desync=multisplit:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1:strategy=1',
-				'--lua-desync=multidisorder:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=4:strategy=2',
-				'--lua-desync=multidisorder:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1:strategy=2',
-				'--lua-desync=multidisorder:pos=1,midsld:seqovl=1:strategy=3',
-				'--lua-desync=multisplit:pos=1,midsld:seqovl=1:strategy=4'];
+				'--in-range=x'];
+			if (!nofake) {
+				out.push('--lua-desync=multisplit:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=' + bs + ':strategy=1');
+			} else {
+				out.push('--lua-desync=multisplit:pos=2:strategy=1');
+			}
+			out.push('--lua-desync=multisplit:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1:strategy=1');
+			if (!nofake) {
+				out.push('--lua-desync=multidisorder:blob=fake_default_tls:badsum:pos=2:nodrop:repeats=' + bs + ':strategy=2');
+			} else {
+				out.push('--lua-desync=multidisorder:pos=2:strategy=2');
+			}
+			out.push('--lua-desync=multidisorder:pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1:strategy=2');
+			out.push('--lua-desync=multidisorder:pos=1,midsld:seqovl=1:strategy=3');
+			out.push('--lua-desync=multisplit:pos=1,midsld:seqovl=1:strategy=4');
+			return out;
+		}
+		function doseCurveFromSel() {
+			/* дозовая кривая badsum из отчёта Подбора (textarea sel_report): кандидаты с
+			   badsum:pos=2 + repeats=4 и repeats=2, колонка «брауз1.3» (P/PT). null — если
+			   Подбор на этой странице не запускался (или в корпусе не было badsum-кандидатов) */
+			var el = document.getElementById('sel_report');
+			if (!el || !el.value) return null;
+			var rows = el.value.split('\n'), d4 = null, d2 = null;
+			for (var i = 0; i < rows.length; i++) {
+				var r = rows[i];
+				var m = r.match(/^\s*\d+\s+(\d+)\/(\d+)/);
+				if (!m) continue;
+				var ok = parseInt(m[1], 10), tot = parseInt(m[2], 10);
+				if (r.indexOf('badsum:pos=2') >= 0 && r.indexOf('repeats=4') >= 0) d4 = { ok: ok, tot: tot };
+				else if (r.indexOf('badsum:pos=2') >= 0 && r.indexOf('repeats=2') >= 0) d2 = { ok: ok, tot: tot };
+			}
+			if (!d4 && !d2) return null;
+			return { d4: d4, d2: d2 };
 		}
 		function withPreamble(args) {
 			var l = ['--out-range=-s34228'];
@@ -1394,7 +1729,7 @@
 			v5note = 'ваш набор в рамке дробилки: payload=all режет и ответ сервера, быстрый circular';
 		}
 
-		/* --- Вариант 7: Дробилка-Лайт — сниженная доза шума (против сигнатуры, для слабых роутеров) --- */
+		/* --- Вариант 6: Дробилка-Лайт — сниженная доза шума (против сигнатуры, для слабых роутеров) --- */
 		var v7 = null, v7note = '';
 		var lightGate = (stable.indexOf(24) >= 0 && wk[24]) || (stable.indexOf(26) >= 0 && wk[26]);
 		if (isTspu && lightGate) {
@@ -1415,7 +1750,7 @@
 				tagStrategy(stripPayload(baseArgs), 1)].concat(steps7);
 			v7note = 'сниженная доза шума (repeats=2) — против выработки сигнатуры и для слабых роутеров';
 		}
-		/* --- Вариант 8: Ротор (анти-адаптив) --- */
+		/* --- Вариант 7: Ротор (анти-адаптив) --- */
 		var v8 = null, v8note = '';
 		if (!isTspu) {
 			v8 = null; v8note = '— доступен по отчёту TSPU test (нужны номера строк)';
@@ -1446,7 +1781,7 @@
 			(hasV6 ? '' : ' (в отчёте нет v6-блока)'));
 		o.push('Домен отчёта: ' + (window.tspuGenDomainUsed || '—'));
 		if (raw && raw.indexOf('circular: НЕ НАЙДЕНА') >= 0) {
-			o.push('ВНИМАНИЕ: в lua-файлах вашей установки zapret2 нет функции circular — варианты 4-8 (circular-оркестратор)');
+			o.push('ВНИМАНИЕ: в lua-файлах вашей установки zapret2 нет функции circular — варианты 4-10 (circular-оркестратор)');
 			o.push('не заработают с этим nfqws2: он печатает "desync function circular does not exist" и соединения идут БЕЗ обхода.');
 			o.push('Обновите zapret2 до свежей версии (lua-скрипты), либо используйте варианты 1-3 (без circular).');
 		}
@@ -1493,23 +1828,40 @@
 		if (v5) o = o.concat(v5); else o.push(v5note);
 		if (v5note && v5) o.push('   (' + v5note + ')');
 		o.push('');
-		o.push('6. Универсальная лестница (постоянная, не зависит от отчёта — проверена целиком):');
-		o = o.concat(communityTemplate());
-		o.push('   (профиль для шаблона: TCP, порт 443, БЕЗ фильтра L7; payload=all режет и ответ');
-		o.push('    сервера, badsum-примеси сбивают классификацию ТСПУ,');
-		o.push('    7 разрезов бьют ресборку в семь точек, circular восстанавливается за 60 с)');
 		if (v7) {
 			o.push('');
-			o.push('7. Дробилка-Лайт (сниженная доза шума — против сигнатуры, для слабых роутеров):');
+			o.push('6. Дробилка-Лайт (сниженная доза шума — против сигнатуры, для слабых роутеров):');
 			o = o.concat(v7);
 			o.push('   (' + v7note + ')');
 		}
 		if (v8) {
 			o.push('');
-			o.push('8. Ротор (анти-адаптив) — против накопления сигнатуры адаптивным ТСПУ:');
+			o.push('7. Ротор (анти-адаптив) — против накопления сигнатуры адаптивным ТСПУ:');
 			o = o.concat(v8);
 			o.push('   (' + v8note + ')');
 		}
+		/* --- Универсальное семейство (в конце): доза по вашему Подбору --- */
+		var dc = doseCurveFromSel();
+		var d2Prim = !!(dc && dc.d4 && dc.d2 && dc.d4.ok === 0 && dc.d2.ok > 0);
+		o.push('');
+		o.push('8. Универсальная (канон, доза badsum 4):');
+		o = o.concat(communityTemplate(4));
+		o.push('   (профиль: TCP, порт 443, список youtube; payload=all шумит на КАЖДОМ пакете —');
+		o.push('    хендшейк И data-фазу, где ТСПУ классифицирует длинные стримы приложений;');
+		o.push('    badsum-примеси сбивают классификацию, 7 разрезов бьют ресборку,');
+		o.push('    circular восстанавливается за 60 с; при многоузловости — nld=3 в строке circular)');
+		if (d2Prim) o.push('   (ВНИМАНИЕ: в вашем Подборе доза 4 мертва (' + dc.d4.ok + '/' + dc.d4.tot + '), доза 2 жива (' + dc.d2.ok + '/' + dc.d2.tot + ') — основной для вас Вариант 9)');
+		o.push('');
+		if (d2Prim) o.push('9. Универсальная (доза badsum 2) — ОСНОВНАЯ по вашему Подбору (доза 4 не прошла):');
+		else o.push('9. Универсальная (доза badsum 2 — запасная, если четвёрку ТСПУ детектит):');
+		o = o.concat(communityTemplate(2));
+		o.push('   (то же семейство, но repeats=2: доза badsum — тюнинг-параметр, у Вадима/СПб');
+		o.push('    четвёрка 0/15 при живой двойке 5/15; измеряется кандидатами 8/9 Подбора)');
+		o.push('');
+		o.push('10. Универсальная без фейков (резка data-фазы, если ТСПУ распознаёт битые чексуммы):');
+		o = o.concat(communityTemplate(0, true));
+		o.push('   (механика не полевая: каждый пакет режется на 2 байта + остаток — фулинг сегментацией');
+		o.push('    без badsum; включайте при признаках адаптации к badsum — канарейка видит деградацию)');
 		/* Применение в Zapret2: сохранить варианты для кнопок */
 		window.tspuApplyList = [];
 		function pushVar(n, arr, label) { if (arr && arr.length) window.tspuApplyList.push({ n: n, label: label, script: arr.join('\n') }); }
@@ -1518,9 +1870,11 @@
 		pushVar(3, v3, 'Оптимальная с фейком');
 		pushVar(4, v4, 'Лестница-страховка');
 		pushVar(5, v5, 'Дробилка');
-		pushVar(6, communityTemplate(), 'Универсальная лестница');
-		pushVar(7, v7, 'Дробилка-Лайт');
-		pushVar(8, v8, 'Ротор (анти-адаптив)');
+		pushVar(6, v7, 'Дробилка-Лайт');
+		pushVar(7, v8, 'Ротор (анти-адаптив)');
+		pushVar(8, communityTemplate(4), 'Универсальная (доза 4)');
+		pushVar(9, communityTemplate(2), 'Универсальная (доза 2)');
+		pushVar(10, communityTemplate(0, true), 'Универсальная (без фейков)');
 		var rowHtml = '';
 		for (var ai = 0; ai < window.tspuApplyList.length; ai++) {
 			var av = window.tspuApplyList[ai];
@@ -1549,6 +1903,8 @@
 		o.push('  профиль-перехватчик выше по списку заглушит новую стратегию.');
 		o.push('— Профиль: TCP, порт 443, IPv4, L7=TLS.');
 		o.push('— Видео тормозит, а сайт работает? Сначала попробуйте варианты выше — чаще этого достаточно.');
+		o.push('  Если в браузере хорошо, а в ПРИЛОЖЕНИЯХ (Apple/TV) тормозит — берите Универсальные варианты 8–10:');
+		o.push('  они шумят и на data-фазе (после хендшейка), где адаптивный ТСПУ классифицирует длинные стримы.');
 		o.push('— Только если не помогло: узел googlevideo тестируется ОТДЕЛЬНЫМ прогоном (в поле домена —');
 		o.push('  только имя узла). Узел: F12 → Network → фильтр videoplayback → правый клик по запросу →');
 		o.push('  Copy → Copy link address — это КОНКРЕТНЫЙ узел (rrN---sn-XXXX.googlevideo.com), а НЕ домен googlevideo.com;');
@@ -1617,7 +1973,7 @@
 		var list = window.tspuApplyList || [];
 		var v = null;
 		for (var k = 0; k < list.length; k++) if (list[k].n === i) v = list[k];
-		if (!v) return;
+		if (!v) { elGenStatus.textContent = 'Вариант ' + i + ' не найден в текущей генерации — нажмите «Сгенерировать стратегии» ещё раз'; return; }
 		if (!window.confirm('Применить вариант ' + v.n + ' («' + v.label + '») в Zapret2?\nСекция tspu_test будет записана в /etc/config/zapret2 (существующая заменяется), создаётся резервная копия, Zapret2 перезапустится.')) return;
 		elGenStatus.textContent = 'Применяю вариант ' + v.n + ' в Zapret2...';
 		xhr(U_APPLY + '?script=' + encodeURIComponent(v.script) + '&label=' + encodeURIComponent(v.label) + '&hostlist=' + encodeURIComponent(window.tspuApplyHostlist ? window.tspuApplyHostlist() : '') + '&l3=' + encodeURIComponent(window.tspuApplyL3 ? window.tspuApplyL3() : 'ipv4') + '&domain=' + encodeURIComponent(elDomain.value), function (t) {

@@ -7,7 +7,9 @@
 			"path": "tspu-test/test"
 		},
 		"depends": {
-			"acl": [ "luci-app-tspu-test" ],
+			"acl": [
+				"luci-app-tspu-test"
+			],
 			"fs": {
 				"/usr/bin/tspu-test": "executable"
 			}

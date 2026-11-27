@@ -26,7 +26,7 @@ jobs:
           find apk-data -type f -exec chmod 644 {} +
           chmod 755 apk-data/usr/bin/tspu-test apk-data/usr/bin/utlscurl apk-data/usr/bin/ytsniff
           # Версия в SCRIPT_VER и в version-файл для LuCI
-          sed -i 's/@APP_VERSION@/3.0/' apk-data/usr/bin/tspu-test apk-data/usr/share/tspu-test/version
+          sed -i 's/@APP_VERSION@/3.0/' apk-data/usr/bin/tspu-test apk-data/usr/share/tspu-test/version apk-data/usr/lib/lua/luci/view/tspu-test/test.htm
 
       - name: Create package scripts
         run: |

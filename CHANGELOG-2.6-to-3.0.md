@@ -60,7 +60,7 @@
 - **DoH-запросы не рвутся DNS-подменами**: бутстрап через фиксированный адрес (fake-IP сервисы типа ZeroBlock больше не искажают пробы молча).
 - **Очистка «Кандидаты/отчёты» останавливает идущее слушание** — статус больше не показывает устаревшие таблицы узлов.
 - **IP-валидация ремапа**: мусорные адреса (локальные/фейк) не пинятся.
-- **Пакеты сжаты UPX** (Go-бинарники 8,2 МБ → 2,5 МБ после установки) — после установки должно остаться ~10 МБ свободных.
+- **Пакеты компактны**: Go-бинарники utlscurl/ytsniff сжаты UPX (5.3.0, --lzma) — пакет ~2,4 МБ, после установки ~2,5 МБ.
 
 ## 📚 Мануал
 
@@ -72,16 +72,20 @@
 
 **OpenWrt 23.05 / 24.x (opkg):**
 ```
-opkg install --force-reinstall https://github.com/saitkul/tspu-class-test/releases/latest/download/luci-app-tspu-test_3.0_all.ipk
+curl -L -o /tmp/tspu3.ipk https://github.com/saitkul/tspu-class-test/releases/latest/download/luci-app-tspu-test_3.0_all.ipk
+opkg install --force-reinstall /tmp/tspu3.ipk
 ```
 
 **OpenWrt 25.x (apk):**
 ```
-apk add --allow-untrusted https://github.com/saitkul/tspu-class-test/releases/latest/download/luci-app-tspu-test-3.0.apk
+curl -L -o /tmp/tspu3.apk https://github.com/saitkul/tspu-class-test/releases/latest/download/luci-app-tspu-test-3.0.apk
+apk add --allow-untrusted /tmp/tspu3.apk
 ```
+
+*(загрузка пакетов по URL напрямую opkg/apk не умеют — сначала curl в /tmp, затем установка локального файла; curl входит в зависимости приложения)*
 
 После установки выйдите из LuCI и войдите заново (или Ctrl+F5) — интерфейс гарантированно обновится. Панель: **Службы → TSPU test**.
 
-**Примечание:** пакет вырос до ~2,4 МБ (в ipk; ~2,5 МБ после установки — Go-бинарники utlscurl/ytsniff для отпечатка браузера и поиска узлов, сжаты UPX). После установки должно остаться ~10 МБ свободных.
+**Примечание:** пакет ~2,4 МБ, после установки ~2,5 МБ (Go-бинарники utlscurl/ytsniff для отпечатка браузера и поиска узлов сжаты UPX). Убедитесь, что на роутере есть запас свободного места.
 
 Баги и недочёты — в [Issues](https://github.com/saitkul/tspu-class-test/issues).

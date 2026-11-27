@@ -17,18 +17,21 @@
 
 **OpenWrt 23.05 / 24.x (opkg)** — через SSH:
 ```sh
-opkg update && opkg install curl
-opkg install --force-reinstall https://github.com/saitkul/tspu-class-test/releases/latest/download/luci-app-tspu-test_3.0_all.ipk
+curl -L -o /tmp/tspu3.ipk https://github.com/saitkul/tspu-class-test/releases/latest/download/luci-app-tspu-test_3.0_all.ipk
+opkg install --force-reinstall /tmp/tspu3.ipk
 ```
 
 **OpenWrt 25.x (apk)** — через SSH:
 ```sh
-apk add --allow-untrusted https://github.com/saitkul/tspu-class-test/releases/latest/download/luci-app-tspu-test-3.0.apk
+curl -L -o /tmp/tspu3.apk https://github.com/saitkul/tspu-class-test/releases/latest/download/luci-app-tspu-test-3.0.apk
+apk add --allow-untrusted /tmp/tspu3.apk
 ```
+
+*(загрузку по URL напрямую opkg/apk не умеют — сначала curl в /tmp, затем установка локального файла; curl входит в зависимости приложения. Альтернатива без терминала: Система → Пакеты → загрузить пакет)*
 
 После установки выйдите из LuCI и войдите заново (или Ctrl+F5). Панель: **Службы → TSPU test**.
 
-**Требования:** Zapret2 установленный и работающий (приложение останавливает его только на время теста и возвращает обратно), ~2,5 МБ места на роутере (Go-бинарники utlscurl/ytsniff для отпечатка браузера и поиска узлов, сжаты UPX), ~10 МБ должно остаться свободными.
+**Требования:** Zapret2 установленный и работающий (приложение останавливает его только на время теста и возвращает обратно); ~2,5 МБ места на роутере (пакет ~2,4 МБ — Go-бинарники utlscurl/ytsniff для отпечатка браузера и поиска узлов сжаты UPX).
 
 ---
 
